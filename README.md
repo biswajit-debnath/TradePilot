@@ -1,36 +1,147 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Dhan SL Order App (Next.js)
 
-## Getting Started
+A Next.js application for placing Stop Loss Market (SL-M) orders on your option trades using the Dhan API.
 
-First, run the development server:
+## 📋 Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Full Stack Next.js** - No separate backend needed
+- Automatically fetches your last traded option BUY order
+- Places SL-M order at **Buy Price + 2 points** (configurable)
+- Beautiful dark theme UI with Tailwind CSS
+- View and manage pending SL orders
+- Real-time connection status
+
+## 🚀 How It Works
+
+1. You place a CALL/PUT option buy order in Dhan UI (e.g., at ₹100)
+2. Price moves in your favor (e.g., ₹100 → ₹106)
+3. Click **"Place SL Order"** button
+4. App fetches your buy price (₹100) and places SL-M at ₹102 (buy price + 2)
+5. The SL order appears in Dhan UI
+6. If price falls to ₹102, SL triggers and position exits at market price
+
+## 📦 Installation
+
+1. **Install dependencies:**
+   ```bash
+   cd dhan_sl_nextjs
+   npm install
+   ```
+
+2. **Configure credentials:**
+   
+   Copy the example env file:
+   ```bash
+   cp .env.local.example .env.local
+   ```
+   
+   Edit `.env.local` with your Dhan credentials:
+   ```env
+   NEXT_PUBLIC_DHAN_CLIENT_ID=YOUR_CLIENT_ID
+   DHAN_ACCESS_TOKEN=YOUR_ACCESS_TOKEN
+   NEXT_PUBLIC_SL_OFFSET=2
+   ```
+
+   **Getting Access Token:**
+   - Login to [web.dhan.co](https://web.dhan.co/)
+   - Click on **My Profile** → **Access DhanHQ APIs**
+   - Generate Access Token (valid for 24 hours)
+
+3. **Setup Static IP (Required for Order Placement):**
+   - Go to [web.dhan.co](https://web.dhan.co/) → My Profile → DhanHQ APIs
+   - Set your primary (and optionally secondary) static IP
+   - Note: You need a static IP from your ISP
+
+4. **Run the development server:**
+   ```bash
+   npm run dev
+   ```
+   
+   Open [http://localhost:3000](http://localhost:3000)
+
+## 📊 API Routes
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/verify-connection` | GET | Verify Dhan API connection |
+| `/api/current-position` | GET | Get current open position (options/stocks) |
+| `/api/place-sl-market-order` | POST | Place SL-Market order for position |
+| `/api/place-sl-limit-order` | POST | Place SL-Limit order for position |
+| `/api/pending-sl-orders` | GET | Get pending SL orders |
+| `/api/modify-sl-order` | PUT | Modify SL trigger price |
+| `/api/cancel-sl-order` | DELETE | Cancel SL order |
+| `/api/exit-all` | POST | Exit all positions & cancel all orders |
+| `/api/order-book` | GET | Get full order book |
+
+## 📁 Project Structure
+
+```
+dhan_sl_nextjs/
+├── src/
+│   ├── app/
+│   │   ├── api/                    # API Routes
+│   │   │   ├── verify-connection/
+│   │   │   ├── last-option-order/
+│   │   │   ├── place-sl-order/
+│   │   │   ├── pending-sl-orders/
+│   │   │   ├── modify-sl-order/
+│   │   │   ├── cancel-sl-order/
+│   │   │   └── order-book/
+│   │   ├── globals.css
+│   │   ├── layout.tsx
+│   │   └── page.tsx               # Main UI
+│   ├── config/
+│   │   └── index.ts               # Configuration
+│   ├── lib/
+│   │   └── dhan-api.ts            # Dhan API client
+│   ├── services/
+│   │   └── api.ts                 # Frontend API service
+│   └── types/
+│       └── index.ts               # TypeScript types
+├── .env.local.example
+├── package.json
+└── README.md
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## ⚠️ Important Notes
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Static IP Required**: Dhan requires static IP whitelisting for order placement APIs (SEBI requirement).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+2. **Access Token Validity**: Token is valid for 24 hours. Regenerate daily from web.dhan.co.
 
-## Learn More
+3. **Server-side API Calls**: All Dhan API calls happen server-side via Next.js API routes. Your access token is never exposed to the browser.
 
-To learn more about Next.js, take a look at the following resources:
+4. **Order Types**:
+   - `STOP_LOSS_MARKET` (SL-M): Triggers at trigger price, executes at market
+   - `STOP_LOSS` (SL-L): Triggers at trigger price, executes at limit price
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🔧 Customization
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Change SL Offset
+Edit `.env.local`:
+```env
+NEXT_PUBLIC_SL_OFFSET=3
+```
 
-## Deploy on Vercel
+Or edit `src/config/index.ts` directly.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Custom Trigger Price
+The Place SL Order API accepts an optional body:
+```json
+{
+  "trigger_price": 105.5
+}
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📚 Dhan API Documentation
+
+- [Orders API](https://dhanhq.co/docs/v2/orders/)
+- [Authentication](https://dhanhq.co/docs/v2/authentication/)
+- [Annexure](https://dhanhq.co/docs/v2/annexure/)
+
+## 🛠️ Tech Stack
+
+- **Next.js 14** - React framework with API routes
+- **TypeScript** - Type safety
+- **Tailwind CSS** - Styling
+- **Dhan API v2** - Trading API

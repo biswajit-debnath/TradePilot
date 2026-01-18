@@ -1,65 +1,464 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { apiService } from '@/services/api';
+import { OrderDetails, PendingSLOrder, ConnectionStatus } from '@/types';
 
 export default function Home() {
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
+  const [lastOrder, setLastOrder] = useState<OrderDetails | null>(null);
+  const [pendingOrders, setPendingOrders] = useState<PendingSLOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
+
+  const showAlert = (message: string, type: 'success' | 'error' | 'info') => {
+    setAlert({ message, type });
+    setTimeout(() => setAlert(null), 5000);
+  };
+
+  const checkConnection = useCallback(async () => {
+    try {
+      const status = await apiService.verifyConnection();
+      setConnectionStatus(status);
+      if (!status.success) {
+        showAlert('Failed to connect: ' + status.error, 'error');
+      }
+    } catch (error) {
+      setConnectionStatus({ success: false, error: 'Connection error' });
+      showAlert('Connection error: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
+    }
+  }, []);
+
+  const fetchLastOrder = useCallback(async () => {
+    try {
+      const response = await apiService.getLastOptionOrder();
+      if (response.success && response.order) {
+        setLastOrder(response.order);
+      } else {
+        setLastOrder(null);
+      }
+    } catch (error) {
+      showAlert('Error fetching order: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
+    }
+  }, []);
+
+  const fetchPendingSLOrders = useCallback(async () => {
+    try {
+      const response = await apiService.getPendingSLOrders();
+      if (response.success) {
+        setPendingOrders(response.orders);
+      }
+    } catch (error) {
+      showAlert('Error fetching SL orders: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
+    }
+  }, []);
+
+  const placeSLMarketOrder = async () => {
+    setIsLoading(true);
+    try {
+      const response = await apiService.placeSLMarketOrder();
+      if (response.success) {
+        showAlert(`✅ SL-M Order Placed! Order ID: ${response.order_id} | Trigger: ₹${response.trigger_price}`, 'success');
+        fetchPendingSLOrders();
+      } else {
+        showAlert('❌ Failed: ' + response.error, 'error');
+      }
+    } catch (error) {
+      showAlert('Error: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const placeSLLimitOrder = async () => {
+    setIsLoading(true);
+    try {
+      const response = await apiService.placeSLLimitOrder();
+      if (response.success) {
+        showAlert(`✅ SL-Limit Order Placed! Order ID: ${response.order_id} | Trigger: ₹${response.trigger_price} | Limit: ₹${response.limit_price}`, 'success');
+        fetchPendingSLOrders();
+      } else {
+        showAlert('❌ Failed: ' + response.error, 'error');
+      }
+    } catch (error) {
+      showAlert('Error: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const placeTakeProfitOrder = async () => {
+    setIsLoading(true);
+    try {
+      const response = await apiService.placeTakeProfitOrder(Number(process.env.NEXT_PUBLIC_TP_OFFSET));
+      if (response.success) {
+        showAlert(`✅ Take Profit Order Placed! Order ID: ${response.order_id} | Trigger: ₹${response.trigger_price}`, 'success');
+        fetchPendingSLOrders();
+      } else {
+        showAlert('❌ Failed: ' + response.error, 'error');
+      }
+    } catch (error) {
+      showAlert('Error: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const cancelSLOrder = async (orderId: string) => {
+    if (!confirm('Are you sure you want to cancel this SL order?')) return;
+    
+    try {
+      const response = await apiService.cancelSLOrder(orderId);
+      if (response.success) {
+        showAlert('✅ SL Order cancelled', 'success');
+        fetchPendingSLOrders();
+      } else {
+        showAlert('❌ Failed to cancel: ' + response.error, 'error');
+      }
+    } catch (error) {
+      showAlert('Error: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
+    }
+  };
+
+  const exitAll = async () => {
+    const confirmed = confirm(
+      '⚠️ WARNING: This will EXIT ALL open positions and CANCEL ALL pending orders!\n\nAre you absolutely sure?'
+    );
+    
+    if (!confirmed) return;
+
+    setIsLoading(true);
+    try {
+      const response = await apiService.exitAll();
+      if (response.success) {
+        const message = response.errors && response.errors.length > 0
+          ? `⚠️ Partially completed: ${response.message}\n\nErrors: ${response.errors.join(', ')}`
+          : `✅ ${response.message}`;
+        
+        showAlert(message, response.errors && response.errors.length > 0 ? 'info' : 'success');
+        fetchPendingSLOrders();
+      } else {
+        showAlert('❌ Failed to exit all: ' + response.error, 'error');
+      }
+    } catch (error) {
+      showAlert('Error: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const refreshAll = useCallback(() => {
+    checkConnection();
+    fetchLastOrder();
+    fetchPendingSLOrders();
+  }, [checkConnection, fetchLastOrder, fetchPendingSLOrders]);
+
+  useEffect(() => {
+    refreshAll();
+  }, [refreshAll]);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen p-5">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold gradient-text mb-2">📈 Dhan SL Order App</h1>
+          <p className="text-gray-400">Quick Stop Loss Orders for Options & Intraday Stocks</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Status Bar */}
+        <div className="glass-card rounded-xl p-4 mb-5 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full ${connectionStatus?.success ? 'bg-green-400 glow-green' : 'bg-red-500'}`} />
+            <span className="text-gray-300">
+              {connectionStatus?.success 
+                ? `Connected: ${connectionStatus.client_id}` 
+                : connectionStatus?.error || 'Checking connection...'}
+            </span>
+          </div>
+          <div className="flex gap-3">
+            {(lastOrder || pendingOrders.length > 0) && (
+              <button
+                onClick={exitAll}
+                disabled={isLoading}
+                className="px-4 py-2 bg-gradient-to-r from-red-600 to-red-800 rounded-lg hover:shadow-lg hover:shadow-red-500/30 transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ⛔ Exit All
+              </button>
+            )}
+            <button
+              onClick={refreshAll}
+              className="px-4 py-2 border border-gray-600 rounded-lg hover:bg-white/10 transition"
+            >
+              🔄 Refresh
+            </button>
+          </div>
         </div>
-      </main>
+
+        {/* Alert */}
+        {alert && (
+          <div className={`p-4 rounded-xl mb-5 border ${
+            alert.type === 'success' ? 'bg-green-500/20 border-green-500 text-green-400' :
+            alert.type === 'error' ? 'bg-red-500/20 border-red-500 text-red-400' :
+            'bg-cyan-500/20 border-cyan-500 text-cyan-400'
+          }`}>
+            {alert.message}
+          </div>
+        )}
+
+        {/* How It Works */}
+        <div className="glass-card rounded-xl p-6 mb-5">
+          <button
+            onClick={() => setShowHowItWorks(!showHowItWorks)}
+            className="w-full flex justify-between items-center text-left"
+          >
+            <h2 className="text-xl font-semibold text-cyan-400">📋 How It Works</h2>
+            <span className="text-2xl text-cyan-400 transition-transform duration-300" style={{
+              transform: showHowItWorks ? 'rotate(180deg)' : 'rotate(0deg)'
+            }}>
+              ▼
+            </span>
+          </button>
+          
+          {showHowItWorks && (
+            <div className="mt-6">
+              <div className="mb-5">
+                <h3 className="text-lg font-semibold text-green-400 mb-3">🛡️ SL-Market Order (Buy + 2)</h3>
+                <div className="bg-black/20 rounded-lg p-5 space-y-4">
+                  {[
+                    'Place a BUY order in Dhan (Options or Intraday Stocks)',
+                    'Price moves in your favor (e.g., ₹100 → ₹106)',
+                    'Click "Place SL-M Order" button below',
+                    'App fetches your buy price (₹100) and places SL-M at ₹102 (buy + 2)',
+                    'If price falls to ₹102, SL triggers and position exits at market',
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center font-bold flex-shrink-0">
+                        {i + 1}
+                      </div>
+                      <p className="text-gray-300">{step}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold text-orange-400 mb-3">🔻 SL-Limit Order (Buy - 20)</h3>
+                <div className="bg-black/20 rounded-lg p-5 space-y-4">
+                  {[
+                    'Same as above, but for deeper protection',
+                    'If you bought at ₹100, trigger is set at ₹80 (buy - 20)',
+                    'Limit price is ₹79 to ensure execution when triggered',
+                    'This protects from large downward moves',
+                    'Use this for wider stop loss protection',
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-orange-500 to-red-500 flex items-center justify-center font-bold flex-shrink-0">
+                        {i + 1}
+                      </div>
+                      <p className="text-gray-300">{step}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <h3 className="text-lg font-semibold text-cyan-400 mb-3">🎯 TP + ${process.env.NEXT_PUBLIC_TP_OFFSET}</h3>
+                <div className="bg-black/20 rounded-lg p-5 space-y-4">
+                  {[
+                    'Automatically book profits when price reaches target',
+                    'If you bought at ₹100, trigger is set at ₹112 (buy + 12)',
+                    'When price touches ₹112, order triggers and exits at market',
+                    'Lock in profits without monitoring constantly',
+                    'Great for scalping and quick profit booking',
+                  ].map((step, i) => (
+                    <div key={i} className="flex items-center gap-4">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center font-bold flex-shrink-0">
+                        {i + 1}
+                      </div>
+                      <p className="text-gray-300">{step}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Current Open Position */}
+        <div className="glass-card rounded-xl p-6 mb-5">
+          <div className="flex justify-between items-center mb-5">
+            <h2 className="text-xl font-semibold text-cyan-400">
+              📊 Current Open Position {lastOrder && `(${lastOrder.order_category})`}
+            </h2>
+            <button
+              onClick={fetchLastOrder}
+              className="px-4 py-2 border border-gray-600 rounded-lg hover:bg-white/10 transition text-sm"
+            >
+              Refresh Position
+            </button>
+          </div>
+
+          {lastOrder ? (
+            <>
+              <div className="grid grid-cols-2 gap-4 mb-5">
+                <div className="bg-black/30 p-4 rounded-xl">
+                  <p className="text-gray-500 text-sm mb-1">Symbol</p>
+                  <p className="text-xl font-semibold">{lastOrder.symbol || '-'}</p>
+                </div>
+                <div className="bg-black/30 p-4 rounded-xl">
+                  <p className="text-gray-500 text-sm mb-1">Category</p>
+                  <p className="text-xl font-semibold">
+                    {lastOrder.order_category === 'OPTION' ? (
+                      <span className="text-purple-400">📊 Option</span>
+                    ) : (
+                      <span className="text-blue-400">📈 Stock (Intraday)</span>
+                    )}
+                  </p>
+                </div>
+                
+                {lastOrder.order_category === 'OPTION' && (
+                  <>
+                    <div className="bg-black/30 p-4 rounded-xl">
+                      <p className="text-gray-500 text-sm mb-1">Type</p>
+                      <p className="text-xl font-semibold">{lastOrder.option_type || '-'}</p>
+                    </div>
+                    <div className="bg-black/30 p-4 rounded-xl">
+                      <p className="text-gray-500 text-sm mb-1">Strike Price</p>
+                      <p className="text-xl font-semibold">₹{lastOrder.strike_price || '-'}</p>
+                    </div>
+                  </>
+                )}
+                
+                {lastOrder.order_category === 'STOCK' && (
+                  <div className="bg-black/30 p-4 rounded-xl col-span-2">
+                    <p className="text-gray-500 text-sm mb-1">Product Type</p>
+                    <p className="text-xl font-semibold">{lastOrder.product_type}</p>
+                  </div>
+                )}
+                
+                <div className="bg-black/30 p-4 rounded-xl">
+                  <p className="text-gray-500 text-sm mb-1">Quantity</p>
+                  <p className="text-xl font-semibold">{lastOrder.quantity || '-'}</p>
+                </div>
+                <div className="bg-black/30 p-4 rounded-xl">
+                  <p className="text-gray-500 text-sm mb-1">Buy Price</p>
+                  <p className="text-xl font-semibold text-green-400">₹{lastOrder.buy_price?.toFixed(2)}</p>
+                </div>
+                <div className="bg-black/30 p-4 rounded-xl">
+                  <p className="text-gray-500 text-sm mb-1">Unrealized P&L</p>
+                  <p className={`text-xl font-semibold ${
+                    (lastOrder.unrealized_profit || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {(lastOrder.unrealized_profit || 0) >= 0 ? '+' : ''}₹{lastOrder.unrealized_profit?.toFixed(2) || '0.00'}
+                  </p>
+                </div>
+                <div className="bg-black/30 p-4 rounded-xl">
+                  <p className="text-gray-500 text-sm mb-1">SL Trigger Price (Buy + {lastOrder.sl_offset})</p>
+                  <p className="text-xl font-semibold text-red-400">₹{lastOrder.sl_trigger_price?.toFixed(2)}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={placeSLMarketOrder}
+                  disabled={isLoading}
+                  className="w-full py-4 rounded-xl font-semibold text-lg bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-lg hover:shadow-green-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Placing Order...
+                    </span>
+                  ) : (
+                    `+ SL-M +${process.env.NEXT_PUBLIC_SL_OFFSET}`
+                  )}
+                </button>
+
+                <button
+                  onClick={placeSLLimitOrder}
+                  disabled={isLoading}
+                  className="w-full py-4 rounded-xl font-semibold text-lg bg-gradient-to-r from-orange-500 to-red-600 hover:shadow-lg hover:shadow-orange-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Placing Order...
+                    </span>
+                  ) : (
+                    `🔻 SL-Limit -${process.env.NEXT_PUBLIC_SL_OFFSET_LOSS}`
+                  )}
+                </button>
+
+                <button
+                  onClick={placeTakeProfitOrder}
+                  disabled={isLoading}
+                  className="w-full py-4 rounded-xl font-semibold text-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:shadow-lg hover:shadow-cyan-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Placing Order...
+                    </span>
+                  ) : (
+                    `🎯 Take Profit +${process.env.NEXT_PUBLIC_TP_OFFSET}`
+                  )}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-10 text-gray-500">
+              <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <p>No open position found</p>
+              <p className="text-sm mt-1">Buy an option or intraday stock to see it here</p>
+            </div>
+          )}
+        </div>
+
+        {/* Pending SL Orders */}
+        <div className="glass-card rounded-xl p-6">
+          <div className="flex justify-between items-center mb-5">
+            <h2 className="text-xl font-semibold text-cyan-400">⏳ Pending SL Orders</h2>
+            <button
+              onClick={fetchPendingSLOrders}
+              className="px-4 py-2 border border-gray-600 rounded-lg hover:bg-white/10 transition text-sm"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {pendingOrders.length > 0 ? (
+            <div className="space-y-3">
+              {pendingOrders.map((order) => (
+                <div key={order.order_id} className="bg-black/30 p-4 rounded-xl flex justify-between items-center">
+                  <div className="flex-1">
+                    <p className="font-semibold">{order.symbol || 'Unknown'}</p>
+                    <p className="text-sm text-gray-400">
+                      {order.transaction_type} | Qty: {order.quantity} | {order.order_type}
+                    </p>
+                  </div>
+                  <div className="text-xl font-semibold text-red-400 mr-4">
+                    ₹{order.trigger_price}
+                  </div>
+                  <button
+                    onClick={() => cancelSLOrder(order.order_id)}
+                    className="px-4 py-2 rounded-lg bg-gradient-to-r from-red-500 to-red-700 hover:shadow-lg hover:shadow-red-500/30 transition text-sm font-semibold"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>No pending SL orders</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
