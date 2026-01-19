@@ -1,10 +1,10 @@
-// Type definitions for Dhan SL App
+// Type definitions for TradePilot
 
 export interface DhanOrder {
   dhanClientId: string;
   orderId: string;
   correlationId?: string;
-  orderStatus: 'TRANSIT' | 'PENDING' | 'REJECTED' | 'CANCELLED' | 'TRADED' | 'EXPIRED' | 'PART_TRADED';
+  orderStatus: 'TRANSIT' | 'PENDING' | 'REJECTED' | 'CANCELLED' | 'TRADED' | 'EXPIRED' | 'PART_TRADED' | 'TRIGGERED';
   transactionType: 'BUY' | 'SELL';
   exchangeSegment: string;
   productType: string;

@@ -1,10 +1,10 @@
-# Dhan SL Order App - Setup Guide
+# TradePilot - Setup Guide
 
 ## 🚀 Quick Start
 
 ### 1. Configure Credentials
 
-Edit `.env.local` file in the `dhan_sl_nextjs` folder:
+Edit `.env.local` file in the `tradepilot` folder:
 
 ```env
 NEXT_PUBLIC_DHAN_CLIENT_ID=1000000003

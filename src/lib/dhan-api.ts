@@ -110,7 +110,23 @@ class DhanApiService {
       orderData.correlationId = params.correlationId;
     }
 
-    return this.placeOrder(orderData);
+    console.log('📤 Placing SL-Market Order with params:', {
+      exchangeSegment: params.exchangeSegment,
+      productType: params.productType,
+      securityId: params.securityId,
+      quantity: params.quantity,
+      triggerPrice: params.triggerPrice,
+      transactionType: params.transactionType
+    });
+    
+    try {
+      const result = await this.placeOrder(orderData);
+      console.log('✅ Order placed successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ Order placement failed:', error);
+      throw error;
+    }
   }
 
   /**
@@ -262,7 +278,8 @@ class DhanApiService {
   }
 
   /**
-   * Get all pending SL orders
+   * Get all pending orders placed from the app (includes SL, TP, and exit orders)
+   * Filters by correlationId to show only orders placed by this app
    */
   async getPendingSLOrders(): Promise<DhanOrder[]> {
     const orders = await this.getOrderBook();
@@ -270,7 +287,13 @@ class DhanApiService {
     return orders.filter(
       (order) =>
         order.orderStatus === 'PENDING' &&
-        ['STOP_LOSS', 'STOP_LOSS_MARKET'].includes(order.orderType)
+        // Include orders with our correlation IDs (SL_, TP_, EXIT_, SL_LIMIT_, TP_LIMIT_)
+        order.correlationId &&
+        (order.correlationId.startsWith('SL_') || 
+         order.correlationId.startsWith('TP_') || 
+         order.correlationId.startsWith('EXIT_') ||
+         order.correlationId.startsWith('SL_LIMIT_') ||
+         order.correlationId.startsWith('TP_LIMIT_'))
     );
   }
 
@@ -342,8 +365,12 @@ class DhanApiService {
    */
   async getPendingOrders(): Promise<DhanOrder[]> {
     const orders = await this.getOrderBook();
+    //**To debug the issue of placing a zero order  */
+    
+    console.log(`Found ${orders.length} orders in the order book.`);
+
     return orders.filter(
-      (order) => order.orderStatus === 'PENDING' || order.orderStatus === 'TRANSIT'
+      (order) => (order.orderStatus === 'PENDING' || order.orderStatus === 'TRANSIT') || order.orderStatus === "TRIGGERED"
     );
   }
 
@@ -358,18 +385,41 @@ class DhanApiService {
     const errors: string[] = [];
     let positionsExited = 0;
     let ordersCancelled = 0;
+     //**To debug the issue of placing a zero order  */
+     // Primary flow
+        // First buy the positions
+        // Comment the order placing part i.e position one  
+        // Test the and check the order cancelling flow without enabling it
+        // Comment the order cancelling part
+        // Test the order placing part without enabling it
+        // Test the order placing part by enabling it
+        // If issue not found in the placing part then enable the cancelling part and test the full flow
 
     try {
       // Get all open positions
       const positions = await this.getPositions();
+      //**To debug the issue of placing a zero order  */
+      // Cancel the orders part
+      // First buy the positions
+        // Comment the cancelling part temporarily line no 415
+        // Comment the placeOrder part temporarily line no 390
+        // Check the console for the orders and there cancellation flow with the placed consoles
+      console.log(`Found ${positions.length} open positions to exit.`);
       
       // Exit each position by placing opposite market order
       for (const position of positions) {
         // Only exit if there's a net position
+        //**To debug the issue of placing a zero order  */
+
+        console.log(`Processing position: ${position.tradingSymbol} - Net Qty: ${position.netQty}, Type: ${position.positionType}`);
+        
         if (position.netQty !== 0 && position.positionType !== 'CLOSED') {
           try {
             const transactionType = position.netQty > 0 ? 'SELL' : 'BUY';
             const quantity = Math.abs(position.netQty);
+            //**To debug the issue of placing a zero order  */
+            console.log(`Placing order: ${transactionType} ${quantity} of ${position.tradingSymbol}`);
+            console.log(`Position details: Exchange Segment - ${position.exchangeSegment}, Product Type - ${position.productType}, Security ID - ${position.securityId}`);
 
             await this.placeOrder({
               dhanClientId: this.clientId,
@@ -397,9 +447,19 @@ class DhanApiService {
       // Get all pending orders
       const pendingOrders = await this.getPendingOrders();
 
+      //**To debug the issue of placing a zero order  */
+      // Cancelling order part
+        // First buy the positions
+        // Comment the cancelling part temporarily line no 415
+        // Check the console for the orders and there cancellation flow with the placed consoles
+      console.log(`Found ${pendingOrders.length} pending orders to cancel.`);
+
       // Cancel each pending order
       for (const order of pendingOrders) {
         try {
+          //**To debug the issue of placing a zero order  */
+          console.log(`Cancelling order: ${order.orderId} - ${order.tradingSymbol}`);
+
           await this.cancelOrder(order.orderId);
           ordersCancelled++;
           console.log(`Cancelled order: ${order.orderId} - ${order.tradingSymbol}`);
@@ -409,6 +469,9 @@ class DhanApiService {
           console.error(message);
         }
       }
+      //**To debug the issue of placing a zero order  */
+      console.log("Total orders cancelled:", ordersCancelled);
+
     } catch (error) {
       const message = `Exit all failed: ${error instanceof Error ? error.message : 'Unknown'}`;
       errors.push(message);

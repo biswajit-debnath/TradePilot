@@ -78,19 +78,15 @@ class ApiService {
    * Place a stop loss market order
    */
   async placeSLMarketOrder(options?: { triggerPrice?: number; pointsOffset?: number }): Promise<PlaceSLOrderResponse> {
-    const body: any = {};
+    // Now using SL-Limit API for better price control
+    const offset = options?.pointsOffset || Number(process.env.NEXT_PUBLIC_SL_OFFSET || 2);
     
-    if (options?.triggerPrice !== undefined) {
-      body.trigger_price = options.triggerPrice;
-    }
-    
-    if (options?.pointsOffset !== undefined) {
-      body.points_offset = options.pointsOffset;
-    }
-    
-    return this.request<PlaceSLOrderResponse>('/api/place-sl-market-order', {
+    return this.request<PlaceSLOrderResponse>('/api/place-sl-limit-order', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ 
+        offset: offset,
+        is_tp: false  // This is a stop-loss order, not take-profit
+      }),
     });
   }
 
@@ -103,19 +99,26 @@ class ApiService {
   }
 
   /**
-   * Place a take profit market order (sell at buy + points)
+   * Place a take profit limit order (sell at buy + points with limit protection)
+   * Uses SL-Limit order type for better price control
    */
   async placeTakeProfitOrder(pointsOffset: number = 12): Promise<PlaceSLOrderResponse> {
-    return this.placeSLMarketOrder({ pointsOffset });
+    return this.request<PlaceSLOrderResponse>('/api/place-sl-limit-order', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        offset: pointsOffset,
+        is_tp: true 
+      }),
+    });
   }
 
   /**
    * Place a stop loss limit order (buy price - 20)
    */
-  async placeSLLimitOrder(): Promise<PlaceSLOrderResponse> {
+  async placeSLLimitOrder(offset?: number): Promise<PlaceSLOrderResponse> {
     return this.request<PlaceSLOrderResponse>('/api/place-sl-limit-order', {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify(offset ? { offset: -Math.abs(offset) } : {}),
     });
   }
 

@@ -1,4 +1,4 @@
-// API Route: Get Pending SL Orders
+// API Route: Get Pending Orders from TradePilot (SL, TP, Exit orders)
 import { NextResponse } from 'next/server';
 import { dhanApi } from '@/lib/dhan-api';
 

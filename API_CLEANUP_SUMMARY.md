@@ -82,19 +82,19 @@ async getLastOptionOrder() {
 
 ```bash
 # Old endpoint - DELETED
-/home/biswa/Projects/Stock Market/dhan_sl_nextjs/src/app/api/last-option-order/
+/home/biswa/Projects/Stock Market/tradepilot/src/app/api/last-option-order/
 ❌ Does not exist
 
 # New endpoint - EXISTS
-/home/biswa/Projects/Stock Market/dhan_sl_nextjs/src/app/api/current-position/
+/home/biswa/Projects/Stock Market/tradepilot/src/app/api/current-position/
 ✅ Exists and working
 
 # Duplicate - DELETED
-/home/biswa/Projects/Stock Market/dhan_sl_nextjs/src/app/api/exit-all-positions/
+/home/biswa/Projects/Stock Market/tradepilot/src/app/api/exit-all-positions/
 ❌ Does not exist
 
 # Main exit endpoint - EXISTS
-/home/biswa/Projects/Stock Market/dhan_sl_nextjs/src/app/api/exit-all/
+/home/biswa/Projects/Stock Market/tradepilot/src/app/api/exit-all/
 ✅ Exists and working
 ```
 

@@ -174,7 +174,7 @@ confirm('⚠️ WARNING: This will EXIT ALL open positions and CANCEL ALL pendin
 
 ```
 ┌─────────────────────────────────────────────┐
-│ 📈 Dhan SL Order App                        │
+│ ✈️ TradePilot                               │
 ├─────────────────────────────────────────────┤
 │ ● Connected: 1234567  [⛔ Exit All] [🔄]   │  ← HERE
 └─────────────────────────────────────────────┘

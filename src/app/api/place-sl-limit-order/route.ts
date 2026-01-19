@@ -1,9 +1,21 @@
-// API Route: Place SL-Limit Order (Buy price - 20)
+// API Route: Place SL-Limit Order (configurable for SL or TP)
 import { NextRequest, NextResponse } from 'next/server';
 import { dhanApi } from '@/lib/dhan-api';
 
 export async function POST(request: NextRequest) {
   try {
+    // Get optional parameters from request body
+    let customOffset: number | undefined;
+    let isTP = false;
+    
+    try {
+      const body = await request.json();
+      customOffset = body?.offset;
+      isTP = body?.is_tp || false; // Flag to indicate if this is a Take Profit order
+    } catch {
+      // No body or invalid JSON, use default SL calculation
+    }
+
     // Get the last open position
     const position = await dhanApi.getLastOpenPosition();
     
@@ -14,14 +26,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const buyPrice = position.buyAvg;
+    // Get the actual buy price from the last traded order (not average)
+    const lastOrder = await dhanApi.getLastTradedBuyOrder();
+    const buyPrice = lastOrder?.price || position.buyAvg;
     
-    // Calculate SL-Limit prices
-    // Trigger at buy - SL_OFFSET (e.g., if bought at 100, trigger at 80)
-    // Limit price slightly below trigger to ensure execution (e.g., 79)
-    const slOffset = Number(process.env.NEXT_PUBLIC_SL_OFFSET_LOSS) || 20;
-    const triggerPrice = Number(buyPrice.toFixed(1)) - slOffset;
-    const limitPrice = triggerPrice - (Number(process.env.NEXT_PUBLIC_SL_OFFSET_LOSS_LIMIT) || 0.5); // 0.5 points below trigger for better execution
+    console.log(`📊 Position: ${position.tradingSymbol}`);
+    console.log(`   Order Buy Price: ${lastOrder?.price || 'N/A'}`);
+    console.log(`   Position Avg Price: ${position.buyAvg}`);
+    console.log(`   Using: ${buyPrice} (from ${lastOrder?.price ? 'order' : 'position avg'})`);
+    
+    let triggerPrice: number;
+    let limitPrice: number;
+    let correlationIdPrefix: string;
+    
+    if (isTP || (customOffset && customOffset > 0)) {
+      // Take Profit logic: Buy + offset (e.g., buy at 100, TP at 112)
+      const tpOffset = customOffset || Number(process.env.NEXT_PUBLIC_TP_OFFSET) || 12;
+      triggerPrice = Number((buyPrice + tpOffset).toFixed(1));
+      limitPrice = Number((triggerPrice - 0.5).toFixed(1)); // 0.5 below trigger for guaranteed execution
+      correlationIdPrefix = 'TP_LIMIT_';
+      
+      console.log('🎯 Placing TP Limit Order:', {
+        buyPrice,
+        tpOffset,
+        triggerPrice,
+        limitPrice
+      });
+    } else {
+      // Stop Loss logic: Buy - offset (e.g., buy at 100, SL at 80)
+      const slOffset = customOffset ? Math.abs(customOffset) : (Number(process.env.NEXT_PUBLIC_SL_OFFSET_LOSS) || 20);
+      triggerPrice = Number((buyPrice - slOffset).toFixed(1));
+      limitPrice = Number((triggerPrice - 0.5).toFixed(1)); // 0.5 below trigger for better execution
+      correlationIdPrefix = 'SL_LIMIT_';
+      
+      console.log('🛡️ Placing SL Limit Order:', {
+        buyPrice,
+        slOffset,
+        triggerPrice,
+        limitPrice
+      });
+    }
 
     if (triggerPrice <= 0 || limitPrice <= 0) {
       return NextResponse.json(
@@ -39,7 +83,7 @@ export async function POST(request: NextRequest) {
       quantity: position.netQty,
       triggerPrice: triggerPrice,
       price: limitPrice,
-      correlationId: `SL_LIMIT_${position.securityId}`,
+      correlationId: `${correlationIdPrefix}${position.securityId}`,
     });
 
     return NextResponse.json({

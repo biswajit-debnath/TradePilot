@@ -1,30 +1,36 @@
-# Dhan SL Order App (Next.js)
+# TradePilot
 
-A Next.js application for placing Stop Loss Market (SL-M) orders on your option trades using the Dhan API.
+**Automate. Trade. Win.**
+
+Your intelligent trading co-pilot for the Dhan ecosystem. From smart stop-loss and take-profit orders to advanced algorithmic strategies, TradePilot puts your trading on autopilot.
 
 ## 📋 Features
 
-- **Full Stack Next.js** - No separate backend needed
-- Automatically fetches your last traded option BUY order
-- Places SL-M order at **Buy Price + 2 points** (configurable)
-- Beautiful dark theme UI with Tailwind CSS
-- View and manage pending SL orders
-- Real-time connection status
+- **Intelligent Position Management** - Real-time tracking with P&L display
+- **Smart Stop-Loss Orders** - SL-Market (Buy+2) and SL-Limit (Buy-20) protection
+- **Take-Profit Automation** - Auto-book profits at configurable targets
+- **Multi-Asset Support** - Options (NSE/BSE/MCX) and intraday stocks
+- **Exit All Panic Button** - Emergency close all positions with one click
+- **Beautiful Glassmorphism UI** - Dark theme with gradient effects
+- **Real-time Order Management** - View, modify, and cancel pending orders
+- **Position-Based Logic** - Tracks actual holdings, not historical orders
 
 ## 🚀 How It Works
 
-1. You place a CALL/PUT option buy order in Dhan UI (e.g., at ₹100)
+1. You place a CALL/PUT option or intraday stock buy order in Dhan (e.g., at ₹100)
 2. Price moves in your favor (e.g., ₹100 → ₹106)
-3. Click **"Place SL Order"** button
-4. App fetches your buy price (₹100) and places SL-M at ₹102 (buy price + 2)
-5. The SL order appears in Dhan UI
-6. If price falls to ₹102, SL triggers and position exits at market price
+3. Open TradePilot and see your current position with live P&L
+4. Click **"+ SL-M +2"** to protect profits at ₹102 (buy + 2)
+5. Or click **"🔻 SL-Limit -20"** for deeper protection at ₹80
+6. Or click **"🎯 Take Profit +12"** to auto-exit at ₹112
+7. Orders appear in TradePilot's pending orders section
+8. Monitor and manage all orders from one place
 
 ## 📦 Installation
 
 1. **Install dependencies:**
    ```bash
-   cd dhan_sl_nextjs
+   cd tradepilot
    npm install
    ```
 
@@ -76,7 +82,7 @@ A Next.js application for placing Stop Loss Market (SL-M) orders on your option 
 ## 📁 Project Structure
 
 ```
-dhan_sl_nextjs/
+tradepilot/
 ├── src/
 │   ├── app/
 │   │   ├── api/                    # API Routes

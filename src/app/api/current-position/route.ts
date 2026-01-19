@@ -48,8 +48,15 @@ export async function GET() {
       });
     }
 
-    // Use buyAvg as the buy price
-    const buyPrice = position.buyAvg;
+    // Get the actual buy price from the last traded order (not average)
+    const lastOrder = await dhanApi.getLastTradedBuyOrder();
+    const buyPrice = lastOrder?.price || position.buyAvg;
+    
+    console.log(`📊 Position: ${position.tradingSymbol}`);
+    console.log(`   Order Buy Price: ${lastOrder?.price || 'N/A'}`);
+    console.log(`   Position Avg Price: ${position.buyAvg}`);
+    console.log(`   Using: ${buyPrice} (from ${lastOrder?.price ? 'order' : 'position avg'})`);
+    
     const slTriggerPrice = buyPrice + DHAN_CONFIG.SL_OFFSET;
     const optionType = getOptionType(position);
     const positionCategory = getPositionCategory(position);
