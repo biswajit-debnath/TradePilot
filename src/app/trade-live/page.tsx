@@ -1,25 +1,33 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiService } from '@/services/api';
-import { ConnectionStatus } from '@/types';
+import { ConnectionStatus, OrderDetails, PendingSLOrder } from '@/types';
 import { useTradingData } from '@/hooks/useTradingData';
-import { useOrderActions } from '@/hooks/useOrderActions';
 import Alert from '@/components/Alert';
 import Navbar from '@/components/Navbar';
 import DrawerMenu from '@/components/DrawerMenu';
 import HowItWorksModal from '@/components/HowItWorksModal';
-import PositionCard from '@/components/PositionCard';
+import LivePositionCard from '@/components/LivePositionCard';
 import PendingOrdersCard from '@/components/PendingOrdersCard';
 
-export default function Home() {
+export default function TradeLive() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
-  const [tpOffset, setTpOffset] = useState(Number(process.env.NEXT_PUBLIC_TP_OFFSET || 12));
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  
+  // Live data state
+  const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [gainLossPoints, setGainLossPoints] = useState<number | null>(null);
+  const [gainLossPercentage, setGainLossPercentage] = useState<number | null>(null);
+  const [gainLossValue, setGainLossValue] = useState<number | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isLiveUpdating, setIsLiveUpdating] = useState(true);
+  
+  const liveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Use custom hooks for trading data and order actions
+  // Use custom hooks for trading data
   const {
     lastOrder,
     pendingOrders,
@@ -27,34 +35,14 @@ export default function Home() {
     isRefreshing,
     setIsLoading,
     setIsRefreshing,
-    setPendingOrders,
     fetchLastOrder,
     fetchPendingOrders,
-    getPositionData,
-    findExistingLimitOrder,
-    findAnyExistingLimitOrder,
   } = useTradingData();
 
-  const showAlert = (message: string, type: 'success' | 'error' | 'info') => {
+  const showAlert = useCallback((message: string, type: 'success' | 'error' | 'info') => {
     setAlert({ message, type });
     setTimeout(() => setAlert(null), 5000);
-  };
-
-  // Use order actions hook
-  const {
-    placeProtectiveLimitOrder,
-    placeMainStopLossOrder,
-    placeTakeProfitOrder,
-    cancelSLOrder,
-  } = useOrderActions({
-    getPositionData,
-    findAnyExistingLimitOrder,
-    setPendingOrders,
-    fetchPendingOrders,
-    setIsLoading,
-    showAlert,
-    lastOrder,
-  });
+  }, []);
 
   const checkConnection = useCallback(async () => {
     try {
@@ -67,15 +55,68 @@ export default function Home() {
       setConnectionStatus({ success: false, error: 'Connection error' });
       showAlert('Connection error: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
     }
+  }, [showAlert]);
+
+  // Fetch LTP for current position
+  const fetchLTP = useCallback(async (order: OrderDetails) => {
+    try {
+      const response = await apiService.getLTP([{
+        exchangeSegment: order.exchange_segment,
+        securityId: order.security_id,
+      }]);
+
+      if (response.success && response.ltp) {
+        const ltp = response.ltp[order.security_id];
+        if (ltp !== undefined) {
+          setCurrentPrice(ltp);
+          
+          // Calculate gains/losses
+          const buyPrice = order.buy_price;
+          const points = ltp - buyPrice;
+          const percentage = ((ltp - buyPrice) / buyPrice) * 100;
+          const value = points * order.quantity;
+          
+          setGainLossPoints(points);
+          setGainLossPercentage(percentage);
+          setGainLossValue(value);
+          setLastUpdated(new Date());
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching LTP:', error);
+      // Don't show alert for every LTP error to avoid spam
+    }
   }, []);
+
+  // Start/Stop live updates
+  const toggleLiveUpdate = useCallback(() => {
+    setIsLiveUpdating(prev => !prev);
+  }, []);
+
+  // Effect to manage live updates interval
+  useEffect(() => {
+    if (isLiveUpdating && lastOrder) {
+      // Fetch immediately
+      fetchLTP(lastOrder);
+      
+      // Then set up interval for every 1 second
+      liveIntervalRef.current = setInterval(() => {
+        fetchLTP(lastOrder);
+      }, 5000);
+    }
+
+    return () => {
+      if (liveIntervalRef.current) {
+        clearInterval(liveIntervalRef.current);
+        liveIntervalRef.current = null;
+      }
+    };
+  }, [isLiveUpdating, lastOrder, fetchLTP]);
 
   // Main refresh function - fetches all data
   const refreshAll = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      // Reset TP offset to default value
-      setTpOffset(Number(process.env.NEXT_PUBLIC_TP_OFFSET || 12));
-      
       await Promise.all([
         checkConnection(),
         fetchLastOrder(),
@@ -87,15 +128,7 @@ export default function Home() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [checkConnection, fetchLastOrder, fetchPendingOrders]);
-
-  const incrementTpOffset = () => {
-    setTpOffset(prev => prev + 1);
-  };
-
-  const decrementTpOffset = () => {
-    setTpOffset(prev => Math.max(1, prev - 1));
-  };
+  }, [checkConnection, fetchLastOrder, fetchPendingOrders, showAlert, setIsRefreshing]);
 
   const exitAll = async () => {
     const confirmed = confirm(
@@ -131,15 +164,23 @@ export default function Home() {
   };
 
   // Filter pending orders for current position only
-  const positionPendingOrders = lastOrder
-    ? pendingOrders.filter(order => order.security_id === lastOrder.security_id)
+  const positionPendingOrders: PendingSLOrder[] = lastOrder
+    ? pendingOrders.filter((order: PendingSLOrder) => order.security_id === lastOrder.security_id)
     : [];
 
-  // Check if there's an existing limit order
-  const hasExistingLimitOrder = findExistingLimitOrder(true) !== null || findExistingLimitOrder(false) !== null;
+  // Reset live data when position changes
+  useEffect(() => {
+    if (!lastOrder) {
+      setCurrentPrice(null);
+      setGainLossPoints(null);
+      setGainLossPercentage(null);
+      setGainLossValue(null);
+      setLastUpdated(null);
+    }
+  }, [lastOrder]);
 
   useEffect(() => {
-    // Initial load without showing "refreshed" message
+    // Initial load
     const initialLoad = async () => {
       setIsRefreshing(true);
       try {
@@ -153,7 +194,7 @@ export default function Home() {
       }
     };
     initialLoad();
-  }, [checkConnection, fetchLastOrder, fetchPendingOrders]);
+  }, [checkConnection, fetchLastOrder, fetchPendingOrders, setIsRefreshing]);
 
   return (
     <div className="min-h-screen">
@@ -178,23 +219,33 @@ export default function Home() {
         isLoading={isLoading}
       />
       <div className="max-w-4xl mx-auto p-4 sm:p-5 md:p-6">
-        <PositionCard
+        {/* Page Title */}
+        <div className="mb-4 md:mb-6">
+          <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
+            <span className="text-3xl">📈</span>
+            Trade Live Data
+          </h1>
+          <p className="text-gray-400 text-sm mt-1">
+            Real-time price updates with P&L tracking (refreshes every 1 second)
+          </p>
+        </div>
+
+        <LivePositionCard
           lastOrder={lastOrder}
+          currentPrice={currentPrice}
+          gainLossPoints={gainLossPoints}
+          gainLossPercentage={gainLossPercentage}
+          gainLossValue={gainLossValue}
+          lastUpdated={lastUpdated}
           isRefreshing={isRefreshing}
-          isLoading={isLoading}
-          tpOffset={tpOffset}
-          hasExistingLimitOrder={hasExistingLimitOrder}
+          isLiveUpdating={isLiveUpdating}
           onRefreshPosition={handleRefreshPosition}
-          onPlaceProtectiveSL={placeProtectiveLimitOrder}
-          onPlaceStopLossMarket={placeMainStopLossOrder}
-          onPlaceTakeProfit={() => placeTakeProfitOrder(tpOffset)}
-          onIncrementTpOffset={incrementTpOffset}
-          onDecrementTpOffset={decrementTpOffset}
+          onToggleLiveUpdate={toggleLiveUpdate}
         />
         <PendingOrdersCard
           orders={positionPendingOrders}
           lastOrder={lastOrder}
-          onCancelOrder={cancelSLOrder}
+          onCancelOrder={() => {}}
         />
       </div>
     </div>

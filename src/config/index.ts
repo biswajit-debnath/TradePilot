@@ -6,7 +6,9 @@ export const DHAN_CONFIG = {
   CLIENT_ID: process.env.NEXT_PUBLIC_DHAN_CLIENT_ID || 'YOUR_DHAN_CLIENT_ID',
   
   // Your Access Token (generate from web.dhan.co - valid for 24 hours)
-  ACCESS_TOKEN: process.env.DHAN_ACCESS_TOKEN || 'YOUR_ACCESS_TOKEN',
+  // ⚠️ TEMPORARY: Using NEXT_PUBLIC_ for local WebSocket development
+  // 🔴 TODO: Move to server-side proxy before production deployment
+  ACCESS_TOKEN: process.env.NEXT_PUBLIC_DHAN_ACCESS_TOKEN || process.env.DHAN_ACCESS_TOKEN || 'YOUR_ACCESS_TOKEN',
   
   // Dhan API Base URL
   BASE_URL: process.env.NODE_ENV === 'production' || true ? 'https://api.dhan.co/v2' : 'https://sandbox.dhan.co/v2',

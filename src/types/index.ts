@@ -140,3 +140,27 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
 }
+
+// LTP (Last Traded Price) Response
+export interface LTPData {
+  [securityId: string]: {
+    last_price: number;
+  };
+}
+
+export interface LTPResponse {
+  data: {
+    [exchangeSegment: string]: LTPData;
+  };
+  status: string;
+}
+
+// Live position data with current price
+export interface LivePositionData {
+  position: OrderDetails;
+  currentPrice: number;
+  gainLossPoints: number;
+  gainLossPercentage: number;
+  gainLossValue: number;
+  lastUpdated: Date;
+}

@@ -1,6 +1,5 @@
-// Dhan API Service - Server-side only
 import { DHAN_CONFIG } from '@/config';
-import { DhanOrder, DhanProfile, PlaceOrderRequest } from '@/types';
+import { DhanOrder, DhanProfile, PlaceOrderRequest, LTPResponse } from '@/types';
 
 class DhanApiService {
   private baseUrl: string;
@@ -58,6 +57,35 @@ class DhanApiService {
     console.log(`Using Access Token: ${this.accessToken.substring(0, 5)}...`);
     console.log(`API Base URL: ${this.baseUrl}`);
     return this.request<DhanProfile>('/profile');
+  }
+
+  /**
+   * Get Last Traded Price (LTP) for instruments
+   * Rate limit: 1 request per second, max 1000 instruments per request
+   */
+  async getLTP(instruments: { exchangeSegment: string; securityId: string }[]): Promise<LTPResponse> {
+    // Group instruments by exchange segment
+    const requestBody: { [key: string]: number[] } = {};
+    
+    for (const instrument of instruments) {
+      if (!requestBody[instrument.exchangeSegment]) {
+        requestBody[instrument.exchangeSegment] = [];
+      }
+      requestBody[instrument.exchangeSegment].push(parseInt(instrument.securityId));
+    }
+
+    console.log('📊 Fetching LTP for instruments:', JSON.stringify(requestBody));
+
+    const response = await this.request<LTPResponse>('/marketfeed/ltp', {
+      method: 'POST',
+      headers: {
+        'client-id': this.clientId,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    console.log('📊 LTP Response:', JSON.stringify(response));
+    return response;
   }
 
   /**

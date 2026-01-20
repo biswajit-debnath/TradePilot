@@ -170,6 +170,21 @@ class ApiService {
   }
 
   /**
+   * Get Last Traded Price (LTP) for instruments
+   * Rate limit: 1 request per second
+   */
+  async getLTP(instruments: { exchangeSegment: string; securityId: string }[]): Promise<{
+    success: boolean;
+    ltp?: { [securityId: string]: number };
+    error?: string;
+  }> {
+    return this.request('/api/market-ltp', {
+      method: 'POST',
+      body: JSON.stringify({ instruments }),
+    });
+  }
+
+  /**
    * Exit all open positions and cancel all pending orders
    */
   async exitAll(): Promise<{ 

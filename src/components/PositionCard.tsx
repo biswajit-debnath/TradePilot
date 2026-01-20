@@ -37,14 +37,6 @@ export default function PositionCard({
           <h2 className="text-lg md:text-xl font-semibold text-cyan-400">
             📊 Current Open Position {lastOrder && `(${lastOrder.order_category})`}
           </h2>
-          <button
-            onClick={onRefreshPosition}
-            disabled={isRefreshing}
-            className="px-2 md:px-3 py-1 text-xs md:text-sm rounded-lg bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 transition disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
-            title="Refresh position data"
-          >
-            {isRefreshing ? '🔄' : '↻'} <span className="hidden sm:inline">Refresh</span>
-          </button>
         </div>
         {hasExistingLimitOrder && (
           <span className="px-2 md:px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-400">
