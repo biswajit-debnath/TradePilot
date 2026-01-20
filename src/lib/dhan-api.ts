@@ -36,6 +36,9 @@ class DhanApiService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error('❌ Dhan API Error Response:', JSON.stringify(errorData, null, 2));
+      console.error('❌ Request URL:', url);
+      console.error('❌ Request Method:', options.method || 'GET');
       throw new Error(
         errorData.errorMessage || 
         `HTTP Error: ${response.status} ${response.statusText}`
@@ -164,7 +167,57 @@ class DhanApiService {
   }
 
   /**
+   * Place a Limit order (regular LIMIT order for better execution control)
+   */
+  async placeLimitOrder(params: {
+    transactionType: 'BUY' | 'SELL';
+    exchangeSegment: string;
+    productType: string;
+    securityId: string;
+    quantity: number;
+    price: number;
+    correlationId?: string;
+  }): Promise<{ orderId: string; orderStatus: string }> {
+    const orderData: PlaceOrderRequest = {
+      dhanClientId: this.clientId,
+      transactionType: params.transactionType,
+      exchangeSegment: params.exchangeSegment,
+      productType: params.productType,
+      orderType: 'LIMIT',
+      validity: 'DAY',
+      securityId: params.securityId,
+      quantity: params.quantity.toString(),
+      price: params.price.toString(),
+      afterMarketOrder: false,
+    };
+
+    if (params.correlationId) {
+      orderData.correlationId = params.correlationId;
+    }
+
+    console.log('📤 Placing Limit Order with params:', {
+      exchangeSegment: params.exchangeSegment,
+      productType: params.productType,
+      securityId: params.securityId,
+      quantity: params.quantity,
+      price: params.price,
+      transactionType: params.transactionType
+    });
+    
+    try {
+      const result = await this.placeOrder(orderData);
+      console.log('✅ Limit Order placed successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('❌ Limit Order placement failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Modify an existing order
+   * Based on DhanHQ Python library implementation
+   * Note: dhanClientId is automatically added by the library's _send_request method
    */
   async modifyOrder(params: {
     orderId: string;
@@ -173,24 +226,24 @@ class DhanApiService {
     quantity?: number;
     price?: number;
     validity?: 'DAY' | 'IOC';
+    legName?: string;
+    disclosedQuantity?: number;
   }): Promise<{ orderId: string; orderStatus: string }> {
+    // The Python library includes orderId in payload + adds dhanClientId automatically
+    // All values are sent as raw numbers (not strings)
     const modifyData: Record<string, unknown> = {
       dhanClientId: this.clientId,
       orderId: params.orderId,
       orderType: params.orderType,
-      legName: '',
+      legName: params.legName || '',
+      quantity: params.quantity || 0,
+      price: params.price || 0,
+      disclosedQuantity: params.disclosedQuantity || 0,
+      triggerPrice: params.triggerPrice || "",
       validity: params.validity || 'DAY',
     };
 
-    if (params.triggerPrice !== undefined) {
-      modifyData.triggerPrice = params.triggerPrice.toString();
-    }
-    if (params.quantity !== undefined) {
-      modifyData.quantity = params.quantity.toString();
-    }
-    if (params.price !== undefined) {
-      modifyData.price = params.price.toString();
-    }
+    console.log('🔧 Modify Order Request:', JSON.stringify(modifyData, null, 2));
 
     return this.request(`/orders/${params.orderId}`, {
       method: 'PUT',
@@ -237,7 +290,7 @@ class DhanApiService {
   /**
    * Get the last traded BUY order (options or intraday stocks)
    */
-  async getLastTradedBuyOrder(): Promise<DhanOrder | null> {
+  async getLastTradedBuyOrder(securityId?: string): Promise<DhanOrder | null> {
     const orders = await this.getOrderBook();
 
     if (!orders || orders.length === 0) {
@@ -246,7 +299,7 @@ class DhanApiService {
     console.log(`Total orders fetched: ${orders.length}`);
 
     // Filter for traded BUY orders (options, futures, or intraday stocks)
-    const buyOrders = orders.filter(
+    let buyOrders = orders.filter(
       (order) =>
         order.orderStatus === 'TRADED' &&
         order.transactionType === 'BUY' &&
@@ -257,6 +310,12 @@ class DhanApiService {
           (['NSE_EQ', 'BSE_EQ'].includes(order.exchangeSegment) && order.productType === 'INTRADAY')
         )
     );
+
+    // If securityId is provided, filter for that specific security
+    if (securityId) {
+      buyOrders = buyOrders.filter(order => order.securityId === securityId);
+      console.log(`Filtering for securityId: ${securityId}`);
+    }
 
     console.log(`Found ${buyOrders.length} eligible BUY orders (options + intraday stocks)`);
     
@@ -353,9 +412,31 @@ class DhanApiService {
       return null;
     }
 
-    // Return the first position (or you could add logic to select a specific one)
-    const lastPosition = openPositions[0];
-    console.log('Last open position:', JSON.stringify(lastPosition, null, 2));
+    // If only one position, return it
+    if (openPositions.length === 1) {
+      console.log('Single open position:', JSON.stringify(openPositions[0], null, 2));
+      return openPositions[0];
+    }
+
+    // If multiple positions, find the most recent by matching with the latest BUY order
+    try {
+      const lastBuyOrder = await this.getLastTradedBuyOrder();
+      if (lastBuyOrder) {
+        const matchingPosition = openPositions.find(
+          (p: any) => p.securityId === lastBuyOrder.securityId
+        );
+        if (matchingPosition) {
+          console.log('Found position matching most recent BUY order:', JSON.stringify(matchingPosition, null, 2));
+          return matchingPosition;
+        }
+      }
+    } catch (error) {
+      console.error('Error finding position by order:', error);
+    }
+
+    // Fallback: Return the last position in the array
+    const lastPosition = openPositions[openPositions.length - 1];
+    console.log('Fallback: Using last position in array:', JSON.stringify(lastPosition, null, 2));
 
     return lastPosition;
   }

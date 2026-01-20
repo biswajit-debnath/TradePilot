@@ -48,11 +48,12 @@ export async function GET() {
       });
     }
 
-    // Get the actual buy price from the last traded order (not average)
-    const lastOrder = await dhanApi.getLastTradedBuyOrder();
+    // Get the actual buy price from the last traded order for THIS specific position
+    // Pass securityId to ensure we get the order for the current position, not old orders
+    const lastOrder = await dhanApi.getLastTradedBuyOrder(position.securityId);
     const buyPrice = lastOrder?.price || position.buyAvg;
     
-    console.log(`📊 Position: ${position.tradingSymbol}`);
+    console.log(`📊 Position: ${position.tradingSymbol} (Security ID: ${position.securityId})`);
     console.log(`   Order Buy Price: ${lastOrder?.price || 'N/A'}`);
     console.log(`   Position Avg Price: ${position.buyAvg}`);
     console.log(`   Using: ${buyPrice} (from ${lastOrder?.price ? 'order' : 'position avg'})`);

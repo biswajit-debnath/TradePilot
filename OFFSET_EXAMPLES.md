@@ -45,12 +45,12 @@ Limit Price = Trigger Price - 1
 
 ```typescript
 // Default offset of -20
-await apiService.placeSLLimitOrder();
+await apiService.placeDeepStopLossOrder();
 
 // Custom offsets
-await apiService.placeSLLimitOrder(-10);  // Tighter stop
-await apiService.placeSLLimitOrder(-30);  // Wider stop
-await apiService.placeSLLimitOrder(-50);  // Very wide stop
+await apiService.placeDeepStopLossOrder(-10);  // Tighter stop
+await apiService.placeDeepStopLossOrder(-30);  // Wider stop
+await apiService.placeDeepStopLossOrder(-50);  // Very wide stop
 ```
 
 ### Via API:

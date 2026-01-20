@@ -77,10 +77,12 @@ export interface PendingSLOrder {
   symbol: string;
   quantity: number;
   trigger_price: number;
+  limit_price: number;
   order_type: string;
   transaction_type: string;
   status: string;
   create_time: string;
+  security_id: string;
 }
 
 export interface ConnectionStatus {
@@ -100,6 +102,7 @@ export interface PlaceSLOrderResponse {
   limit_price?: number;
   symbol?: string;
   quantity?: number;
+  is_updated?: boolean;
   error?: string;
 }
 

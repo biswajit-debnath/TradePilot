@@ -11,10 +11,12 @@ export async function GET() {
       symbol: order.tradingSymbol,
       quantity: order.quantity,
       trigger_price: order.triggerPrice,
+      limit_price: order.price,
       order_type: order.orderType,
       transaction_type: order.transactionType,
       status: order.orderStatus,
       create_time: order.createTime,
+      security_id: order.securityId,
     }));
 
     return NextResponse.json({

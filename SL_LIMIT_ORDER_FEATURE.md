@@ -25,8 +25,8 @@ Added a new button to place Stop Loss Limit (SL-L) orders at **Buy Price - 20** 
 - Returns order details with both trigger and limit prices
 
 **`/src/services/api.ts`**
-- Added `placeSLLimitOrder()` method
-- Calls `/api/place-sl-limit-order` endpoint
+- Added `placeDeepStopLossOrder()` method
+- Calls `/api/place-limit-order` endpoint
 
 **`/src/types/index.ts`**
 - Updated `PlaceSLOrderResponse` interface
@@ -35,7 +35,7 @@ Added a new button to place Stop Loss Limit (SL-L) orders at **Buy Price - 20** 
 #### Frontend Changes:
 
 **`/src/app/page.tsx`**
-- Added new `placeSLLimitOrder()` function
+- Added new `placeDeepStopLossOrder()` function
 - Added new button "🔻 Place SL-Limit Order (Buy - 20)"
   - Orange-red gradient styling
   - Shows trigger and limit price in success message

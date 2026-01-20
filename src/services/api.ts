@@ -8,6 +8,16 @@ import {
   PlaceSLOrderResponse 
 } from '@/types';
 
+// Position data to pass to APIs
+export interface PositionData {
+  symbol: string;
+  security_id: string;
+  exchange_segment: string;
+  product_type: string;
+  quantity: number;
+  buy_price: number;
+}
+
 class ApiService {
   private async request<T>(
     endpoint: string, 
@@ -75,50 +85,49 @@ class ApiService {
   }
 
   /**
-   * Place a stop loss market order
+   * Place a new limit order
+   * Uses position data from frontend to avoid extra API calls
    */
-  async placeSLMarketOrder(options?: { triggerPrice?: number; pointsOffset?: number }): Promise<PlaceSLOrderResponse> {
-    // Now using SL-Limit API for better price control
-    const offset = options?.pointsOffset || Number(process.env.NEXT_PUBLIC_SL_OFFSET || 2);
-    
-    return this.request<PlaceSLOrderResponse>('/api/place-sl-limit-order', {
+  async placeLimitOrder(options: { 
+    offset: number; 
+    is_tp: boolean;
+    position_data: PositionData;
+  }): Promise<PlaceSLOrderResponse> {
+    return this.request<PlaceSLOrderResponse>('/api/place-limit-order', {
       method: 'POST',
-      body: JSON.stringify({ 
-        offset: offset,
-        is_tp: false  // This is a stop-loss order, not take-profit
+      body: JSON.stringify({
+        offset: options.offset,
+        is_tp: options.is_tp,
+        position_data: options.position_data
       }),
     });
   }
 
   /**
-   * @deprecated Use placeSLMarketOrder() instead
-   * Place a stop loss market order (backwards compatibility)
+   * Update an existing limit order (cancels old and places new)
    */
-  async placeSLOrder(triggerPrice?: number): Promise<PlaceSLOrderResponse> {
-    return this.placeSLMarketOrder(triggerPrice ? { triggerPrice } : undefined);
-  }
-
-  /**
-   * Place a take profit limit order (sell at buy + points with limit protection)
-   * Uses SL-Limit order type for better price control
-   */
-  async placeTakeProfitOrder(pointsOffset: number = 12): Promise<PlaceSLOrderResponse> {
-    return this.request<PlaceSLOrderResponse>('/api/place-sl-limit-order', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        offset: pointsOffset,
-        is_tp: true 
+  async updateLimitOrder(options: { 
+    order_id: string; 
+    limit_price: number;
+    quantity: number;
+    security_id: string;
+    exchange_segment: string;
+    transaction_type: 'BUY' | 'SELL';
+    product_type: string;
+    buy_price: number;
+  }): Promise<PlaceSLOrderResponse> {
+    return this.request<PlaceSLOrderResponse>('/api/update-limit-order', {
+      method: 'PUT',
+      body: JSON.stringify({
+        order_id: options.order_id,
+        limit_price: options.limit_price,
+        quantity: options.quantity,
+        security_id: options.security_id,
+        exchange_segment: options.exchange_segment,
+        transaction_type: options.transaction_type,
+        product_type: options.product_type,
+        buy_price: options.buy_price,
       }),
-    });
-  }
-
-  /**
-   * Place a stop loss limit order (buy price - 20)
-   */
-  async placeSLLimitOrder(offset?: number): Promise<PlaceSLOrderResponse> {
-    return this.request<PlaceSLOrderResponse>('/api/place-sl-limit-order', {
-      method: 'POST',
-      body: JSON.stringify(offset ? { offset: -Math.abs(offset) } : {}),
     });
   }
 
@@ -130,21 +139,26 @@ class ApiService {
   }
 
   /**
-   * Modify an existing SL order
-   */
-  async modifySLOrder(orderId: string, triggerPrice: number): Promise<PlaceSLOrderResponse> {
-    return this.request<PlaceSLOrderResponse>('/api/modify-sl-order', {
-      method: 'PUT',
-      body: JSON.stringify({ order_id: orderId, trigger_price: triggerPrice }),
-    });
-  }
-
-  /**
    * Cancel a pending SL order
    */
   async cancelSLOrder(orderId: string): Promise<{ success: boolean; message?: string; error?: string }> {
     return this.request(`/api/cancel-sl-order?order_id=${orderId}`, {
       method: 'DELETE',
+    });
+  }
+
+  /**
+   * Place a stop-loss market order (triggers when price falls to trigger level)
+   */
+  async placeStopLossMarketOrder(options: {
+    trigger_price: number;
+    position_data: PositionData;
+  }): Promise<PlaceSLOrderResponse> {
+    return this.request<PlaceSLOrderResponse>('/api/place-sl-market-order', {
+      method: 'POST',
+      body: JSON.stringify({
+        trigger_price: options.trigger_price,
+      }),
     });
   }
 
