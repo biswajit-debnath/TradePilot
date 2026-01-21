@@ -148,6 +148,30 @@ export default function DrawerMenu({
 
             <div className="border-t border-gray-800 my-3" />
 
+            {/* My Trades Link */}
+            <Link
+              href="/my-trades"
+              onClick={onClose}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${
+                pathname === '/my-trades' 
+                  ? 'bg-cyan-600/20 border border-cyan-500/30' 
+                  : 'hover:bg-gray-800'
+              }`}
+            >
+              <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <div>
+                <div className="text-sm font-medium text-white flex items-center gap-2">
+                  My Trades
+                  <span className="px-1.5 py-0.5 text-[10px] bg-blue-500/20 text-blue-400 rounded font-bold">JOURNAL</span>
+                </div>
+                <div className="text-xs text-gray-400">Trade history & analytics</div>
+              </div>
+            </Link>
+
+            <div className="border-t border-gray-800 my-3" />
+
             <button
               onClick={() => {
                 onHowItWorksClick();

@@ -14,7 +14,7 @@ export const DHAN_CONFIG = {
   BASE_URL: process.env.NODE_ENV === 'production' || true ? 'https://api.dhan.co/v2' : 'https://sandbox.dhan.co/v2',
 
   // Stop Loss offset (points above buy price)
-  SL_OFFSET: Number(process.env.NEXT_PUBLIC_SL_OFFSET) || 2.0,
+  TP_OFFSET: Number(process.env.NEXT_PUBLIC_PP_OFFSET) || 2.0,
 };
 
 // Exchange Segments

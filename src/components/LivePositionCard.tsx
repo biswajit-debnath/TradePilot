@@ -11,6 +11,8 @@ interface LivePositionCardProps {
   isLiveUpdating: boolean;
   onRefreshPosition: () => void;
   onToggleLiveUpdate: () => void;
+  onExitAll: () => void;
+  isLoading: boolean;
 }
 
 export default function LivePositionCard({
@@ -24,6 +26,8 @@ export default function LivePositionCard({
   isLiveUpdating,
   onRefreshPosition,
   onToggleLiveUpdate,
+  onExitAll,
+  isLoading,
 }: LivePositionCardProps) {
   const formatTime = (date: Date | null) => {
     if (!date) return '--:--:--';
@@ -44,6 +48,17 @@ export default function LivePositionCard({
           <h2 className="text-lg md:text-xl font-semibold text-cyan-400">
             📊 Live Position {lastOrder && `(${lastOrder.order_category})`}
           </h2>
+          {/* Exit All Button - Small, placed with heading */}
+          {lastOrder && (
+            <button
+              onClick={onExitAll}
+              disabled={isLoading || isRefreshing}
+              className="px-2 py-1 text-xs font-medium rounded-lg bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 hover:border-red-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-red-400 hover:text-red-300"
+              title="Exit Position & Cancel Orders"
+            >
+              ⛔ Exit
+            </button>
+          )}
         </div>
         
         {/* Live Update Toggle */}

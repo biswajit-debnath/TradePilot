@@ -5,21 +5,25 @@ import { PendingSLOrder } from '@/types';
 interface UseOrderActionsParams {
   getPositionData: () => any;
   findAnyExistingLimitOrder: () => PendingSLOrder | null;
+  findAllExistingOrders: () => PendingSLOrder[];
   setPendingOrders: React.Dispatch<React.SetStateAction<PendingSLOrder[]>>;
   fetchPendingOrders: () => Promise<PendingSLOrder[]>;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   showAlert: (message: string, type: 'success' | 'error' | 'info') => void;
   lastOrder: any;
+  ppOffset: number;
 }
 
 export function useOrderActions({
   getPositionData,
   findAnyExistingLimitOrder,
+  findAllExistingOrders,
   setPendingOrders,
   fetchPendingOrders,
   setIsLoading,
   showAlert,
   lastOrder,
+  ppOffset,
 }: UseOrderActionsParams) {
   // Handle order placement/update logic
   const handleOrderAction = useCallback(async (offset: number, isTP: boolean, actionName: string) => {
@@ -36,47 +40,43 @@ export function useOrderActions({
         return;
       }
 
-      // Check for ANY existing LIMIT order (not just same type)
-      const existingOrder = findAnyExistingLimitOrder();
+      console.log(`🔍 ${actionName} - Current Position Data:`, {
+        symbol: positionData.symbol,
+        buyPrice: positionData.buy_price,
+        securityId: positionData.security_id,
+        offset: offset,
+        lastOrderSymbol: lastOrder?.symbol,
+        lastOrderBuyPrice: lastOrder?.buy_price
+      });
+
+      // Check for ALL existing orders (LIMIT + STOP_LOSS_LIMIT) and cancel them
+      const existingOrders = findAllExistingOrders();
       const limitPrice = Number((positionData.buy_price + offset).toFixed(1));
       
-      let response;
+      // Cancel all existing orders first
+      if (existingOrders.length > 0) {
+        console.log(`🔄 Cancelling ${existingOrders.length} existing order(s) before placing ${actionName}`);
+        
+        for (const order of existingOrders) {
+          const orderType = order.order_type === 'LIMIT' 
+            ? (order.limit_price > positionData.buy_price ? 'TP' : 'SL') 
+            : 'SL-Limit';
+          console.log(`   ❌ Cancelling ${orderType} order (${order.order_id})`);
+          await apiService.cancelSLOrder(order.order_id);
+          setPendingOrders(prev => prev.filter(o => o.order_id !== order.order_id));
+        }
+      }
       
-      if (existingOrder) {
-        const existingType = existingOrder.limit_price > positionData.buy_price ? 'TP' : 'SL';
-        const newType = limitPrice > positionData.buy_price ? 'TP' : 'SL';
-        console.log(`🔄 Replacing existing ${existingType} order (${existingOrder.order_id}) with new ${newType} order`);
-        
-        // Immediately remove the old order from state to prevent duplicate detection
-        setPendingOrders(prev => prev.filter(o => o.order_id !== existingOrder.order_id));
-        
-        // Update existing order - cancel and replace with new order
-        response = await apiService.updateLimitOrder({
-          order_id: existingOrder.order_id,
-          limit_price: limitPrice,
-          quantity: existingOrder.quantity,
-          security_id: positionData.security_id,
-          exchange_segment: positionData.exchange_segment,
-          transaction_type: 'SELL',
-          product_type: positionData.product_type,
-          buy_price: positionData.buy_price,
-        });
-        
-        if (response.success) {
-          showAlert(`🔄 Replaced ${existingType} with ${actionName}! Order ID: ${response.order_id} | Limit Price: ₹${limitPrice}`, 'success');
-        }
-      } else {
-        console.log(`📝 Creating new order for ${actionName}`);
-        // Create new order
-        response = await apiService.placeLimitOrder({
-          offset,
-          is_tp: isTP,
-          position_data: positionData,
-        });
-        
-        if (response.success) {
-          showAlert(`✅ Created ${actionName}! Order ID: ${response.order_id} | Limit Price: ₹${response.limit_price}`, 'success');
-        }
+      // Now place the new order
+      console.log(`📝 Creating new ${actionName} order`);
+      const response = await apiService.placeLimitOrder({
+        offset,
+        is_tp: isTP,
+        position_data: positionData,
+      });
+      
+      if (response.success) {
+        showAlert(`✅ Created ${actionName}! Order ID: ${response.order_id} | Limit Price: ₹${response.limit_price}`, 'success');
       }
       
       if (!response.success) {
@@ -110,9 +110,11 @@ export function useOrderActions({
     } finally {
       setIsLoading(false);
     }
-  }, [lastOrder, getPositionData, findAnyExistingLimitOrder, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert]);
+  }, [lastOrder, getPositionData, findAllExistingOrders, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert]);
 
   const placeProtectiveLimitOrder = useCallback(async () => {
+    console.log('🟢 PP BUTTON CLICKED - placeProtectiveLimitOrder called with ppOffset:', ppOffset);
+    
     if (!lastOrder) {
       showAlert('❌ No position found. Please refresh data.', 'error');
       return;
@@ -126,27 +128,54 @@ export function useOrderActions({
         return;
       }
 
-      const offset = -(Number(process.env.NEXT_PUBLIC_SL_OFFSET) || 2);
-      const triggerPrice = Number((positionData.buy_price + offset).toFixed(1));
+      console.log('🔍 Protective SL - Current Position Data:', {
+        symbol: positionData.symbol,
+        buyPrice: positionData.buy_price,
+        securityId: positionData.security_id,
+        lastOrderSymbol: lastOrder?.symbol,
+        lastOrderBuyPrice: lastOrder?.buy_price,
+        ppOffset: ppOffset,
+        ppOffsetType: typeof ppOffset
+      });
+
+      // PP offset is POSITIVE - protecting profit above buy price
+      const triggerPrice = Number((positionData.buy_price + ppOffset).toFixed(1));
       const limitPrice = Number((triggerPrice - 0.5).toFixed(1)); // Limit price slightly below trigger
 
-      // Check for ANY existing order and cancel it
-      const existingOrder = findAnyExistingLimitOrder();
-      if (existingOrder) {
-        const existingType = existingOrder.limit_price > positionData.buy_price ? 'TP' : 'SL';
-        console.log(`🔄 Replacing existing ${existingType} order (${existingOrder.order_id}) with Protective SL-Limit order`);
+      console.log('🎯 Protective SL Calculation:', {
+        buyPrice: positionData.buy_price,
+        ppOffset: ppOffset,
+        calculation: `${positionData.buy_price} + ${ppOffset}`,
+        triggerPrice: triggerPrice,
+        limitPrice: limitPrice
+      });
+
+      // Check for ALL existing orders (LIMIT + STOP_LOSS_LIMIT) and cancel them
+      const existingOrders = findAllExistingOrders();
+      if (existingOrders.length > 0) {
+        console.log(`🔄 Cancelling ${existingOrders.length} existing order(s) before placing Protective SL-Limit`);
         
-        await apiService.cancelSLOrder(existingOrder.order_id);
-        setPendingOrders(prev => prev.filter(o => o.order_id !== existingOrder.order_id));
+        for (const order of existingOrders) {
+          const orderType = order.order_type === 'LIMIT' 
+            ? (order.limit_price > positionData.buy_price ? 'TP' : 'SL') 
+            : 'SL-Limit';
+          console.log(`   ❌ Cancelling ${orderType} order (${order.order_id})`);
+          await apiService.cancelSLOrder(order.order_id);
+          setPendingOrders(prev => prev.filter(o => o.order_id !== order.order_id));
+        }
       }
 
       // Place STOP_LOSS_LIMIT order
-      console.log(`🔻 Placing Protective SL-Limit Order: { buyPrice: ${positionData.buy_price}, offset: ${offset}, triggerPrice: ${triggerPrice}, limitPrice: ${limitPrice} }`);
-      const response = await apiService.placeStopLossLimitOrder({
+      console.log(`🔻 Placing Protective SL-Limit Order: { buyPrice: ${positionData.buy_price}, ppOffset: +${ppOffset}, triggerPrice: ${triggerPrice}, limitPrice: ${limitPrice} }`);
+      
+      const requestData = {
         trigger_price: triggerPrice,
         limit_price: limitPrice,
         position_data: positionData,
-      });
+      };
+      console.log('📤 Sending to API:', JSON.stringify(requestData, null, 2));
+      
+      const response = await apiService.placeStopLossLimitOrder(requestData);
 
       if (response.success) {
         showAlert(`✅ Protective SL-Limit Order Placed! Trigger: ₹${triggerPrice} | Limit: ₹${limitPrice}`, 'success');
@@ -161,9 +190,11 @@ export function useOrderActions({
     } finally {
       setIsLoading(false);
     }
-  }, [lastOrder, getPositionData, findAnyExistingLimitOrder, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert]);
+  }, [lastOrder, getPositionData, findAllExistingOrders, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert, ppOffset]);
 
   const placeMainStopLossOrder = useCallback(async () => {
+    console.log('🔴 MAIN SL BUTTON CLICKED - placeMainStopLossOrder called');
+    
     if (!lastOrder) {
       showAlert('❌ No position found. Please refresh data.', 'error');
       return;
@@ -177,18 +208,31 @@ export function useOrderActions({
         return;
       }
 
+      console.log('🔍 Main SL - Current Position Data:', {
+        symbol: positionData.symbol,
+        buyPrice: positionData.buy_price,
+        securityId: positionData.security_id,
+        lastOrderSymbol: lastOrder?.symbol,
+        lastOrderBuyPrice: lastOrder?.buy_price
+      });
+
       const offset = -(Number(process.env.NEXT_PUBLIC_SL_OFFSET_LOSS) || 20);
       const triggerPrice = Number((positionData.buy_price + offset).toFixed(1));
       const limitPrice = Number((triggerPrice - 0.5).toFixed(1)); // Limit price slightly below trigger
 
-      // Check for ANY existing order and cancel it
-      const existingOrder = findAnyExistingLimitOrder();
-      if (existingOrder) {
-        const existingType = existingOrder.limit_price > positionData.buy_price ? 'TP' : 'SL';
-        console.log(`🔄 Replacing existing ${existingType} order (${existingOrder.order_id}) with SL-Limit order`);
+      // Check for ALL existing orders (LIMIT + STOP_LOSS_LIMIT) and cancel them
+      const existingOrders = findAllExistingOrders();
+      if (existingOrders.length > 0) {
+        console.log(`🔄 Cancelling ${existingOrders.length} existing order(s) before placing Main SL-Limit`);
         
-        await apiService.cancelSLOrder(existingOrder.order_id);
-        setPendingOrders(prev => prev.filter(o => o.order_id !== existingOrder.order_id));
+        for (const order of existingOrders) {
+          const orderType = order.order_type === 'LIMIT' 
+            ? (order.limit_price > positionData.buy_price ? 'TP' : 'SL') 
+            : 'SL-Limit';
+          console.log(`   ❌ Cancelling ${orderType} order (${order.order_id})`);
+          await apiService.cancelSLOrder(order.order_id);
+          setPendingOrders(prev => prev.filter(o => o.order_id !== order.order_id));
+        }
       }
 
       // Place STOP_LOSS_LIMIT order (works better for F&O)
@@ -212,7 +256,7 @@ export function useOrderActions({
     } finally {
       setIsLoading(false);
     }
-  }, [lastOrder, getPositionData, findAnyExistingLimitOrder, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert]);
+  }, [lastOrder, getPositionData, findAllExistingOrders, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert]);
 
   const placeTakeProfitOrder = useCallback((tpOffset: number) => {
     handleOrderAction(tpOffset, true, 'Take Profit');

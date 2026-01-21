@@ -29,23 +29,26 @@ Your intelligent trading co-pilot for the Dhan ecosystem. From smart stop-loss a
 ## 📦 Installation
 
 1. **Install dependencies:**
+
    ```bash
    cd tradepilot
    npm install
    ```
 
 2. **Configure credentials:**
-   
+
    Copy the example env file:
+
    ```bash
    cp .env.local.example .env.local
    ```
-   
+
    Edit `.env.local` with your Dhan credentials:
+
    ```env
    NEXT_PUBLIC_DHAN_CLIENT_ID=YOUR_CLIENT_ID
    DHAN_ACCESS_TOKEN=YOUR_ACCESS_TOKEN
-   NEXT_PUBLIC_SL_OFFSET=2
+   NEXT_PUBLIC_PP_OFFSET=2
    ```
 
    **Getting Access Token:**
@@ -59,25 +62,26 @@ Your intelligent trading co-pilot for the Dhan ecosystem. From smart stop-loss a
    - Note: You need a static IP from your ISP
 
 4. **Run the development server:**
+
    ```bash
    npm run dev
    ```
-   
+
    Open [http://localhost:3000](http://localhost:3000)
 
 ## 📊 API Routes
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/verify-connection` | GET | Verify Dhan API connection |
-| `/api/current-position` | GET | Get current open position (options/stocks) |
-| `/api/place-sl-market-order` | POST | Place SL-Market order for position |
-| `/api/place-sl-limit-order` | POST | Place SL-Limit order for position |
-| `/api/pending-sl-orders` | GET | Get pending SL orders |
-| `/api/modify-sl-order` | PUT | Modify SL trigger price |
-| `/api/cancel-sl-order` | DELETE | Cancel SL order |
-| `/api/exit-all` | POST | Exit all positions & cancel all orders |
-| `/api/order-book` | GET | Get full order book |
+| Endpoint                     | Method | Description                                |
+| ---------------------------- | ------ | ------------------------------------------ |
+| `/api/verify-connection`     | GET    | Verify Dhan API connection                 |
+| `/api/current-position`      | GET    | Get current open position (options/stocks) |
+| `/api/place-sl-market-order` | POST   | Place SL-Market order for position         |
+| `/api/place-sl-limit-order`  | POST   | Place SL-Limit order for position          |
+| `/api/pending-orders`        | GET    | Get pending orders                         |
+| `/api/modify-sl-order`       | PUT    | Modify SL trigger price                    |
+| `/api/cancel-sl-order`       | DELETE | Cancel SL order                            |
+| `/api/exit-all`              | POST   | Exit all positions & cancel all orders     |
+| `/api/order-book`            | GET    | Get full order book                        |
 
 ## 📁 Project Structure
 
@@ -89,7 +93,7 @@ tradepilot/
 │   │   │   ├── verify-connection/
 │   │   │   ├── last-option-order/
 │   │   │   ├── place-sl-order/
-│   │   │   ├── pending-sl-orders/
+│   │   │   ├── pending-orders/
 │   │   │   ├── modify-sl-order/
 │   │   │   ├── cancel-sl-order/
 │   │   │   └── order-book/
@@ -124,15 +128,19 @@ tradepilot/
 ## 🔧 Customization
 
 ### Change SL Offset
+
 Edit `.env.local`:
+
 ```env
-NEXT_PUBLIC_SL_OFFSET=3
+NEXT_PUBLIC_PP_OFFSET=3
 ```
 
 Or edit `src/config/index.ts` directly.
 
 ### Custom Trigger Price
+
 The Place SL Order API accepts an optional body:
+
 ```json
 {
   "trigger_price": 105.5

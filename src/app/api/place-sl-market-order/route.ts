@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         correlationIdPrefix = 'TP_';
       }
     } else {
-      triggerPrice = buyPrice + DHAN_CONFIG.SL_OFFSET;
+      triggerPrice = buyPrice + DHAN_CONFIG.TP_OFFSET;
     }
 
     console.log('🎯 Order details:', {

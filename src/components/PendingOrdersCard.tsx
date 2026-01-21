@@ -53,6 +53,12 @@ export default function PendingOrdersCard({
                       <p className="text-gray-400">
                         <span className="text-gray-500">Quantity:</span> {order.quantity}
                       </p>
+                      {order.buy_price && (
+                        <p className="text-gray-400">
+                          <span className="text-gray-500">Buy Price:</span>{' '}
+                          <span className="text-blue-400 font-semibold">₹{order.buy_price.toFixed(2)}</span>
+                        </p>
+                      )}
                       <p className="text-gray-400">
                         <span className="text-gray-500">
                           {order.order_type === 'LIMIT' ? 'Limit Price:' : 'Trigger:'}
@@ -61,6 +67,22 @@ export default function PendingOrdersCard({
                           ₹{order.order_type === 'LIMIT' ? order.limit_price : order.trigger_price}
                         </span>
                       </p>
+                      {order.points !== null && (
+                        <p className="text-gray-400">
+                          <span className="text-gray-500">Points:</span>{' '}
+                          <span className={`font-semibold ${order.points >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {order.points >= 0 ? '+' : ''}{order.points.toFixed(2)}
+                          </span>
+                        </p>
+                      )}
+                      {order.potential_pl !== null && (
+                        <p className="text-gray-400">
+                          <span className="text-gray-500">Potential P&L:</span>{' '}
+                          <span className={`font-semibold ${order.potential_pl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            ₹{order.potential_pl.toFixed(2)}
+                          </span>
+                        </p>
+                      )}
                       <p className="text-gray-400">
                         <span className="text-gray-500">Status:</span> {order.status}
                       </p>
@@ -68,7 +90,7 @@ export default function PendingOrdersCard({
                   </div>
                   <button
                     onClick={() => onCancelOrder(order.order_id)}
-                    className="ml-2 md:ml-4 px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm rounded-lg bg-gradient-to-r from-red-500 to-red-700 hover:shadow-lg hover:shadow-red-500/30 transition font-semibold shrink-0"
+                    className="ml-2 md:ml-4 px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm rounded-lg bg-linear-to-r from-red-500 to-red-700 hover:shadow-lg hover:shadow-red-500/30 transition font-semibold shrink-0"
                   >
                     Cancel
                   </button>

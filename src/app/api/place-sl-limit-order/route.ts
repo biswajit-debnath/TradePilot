@@ -1,103 +1,78 @@
-// API Route: Place SL-Limit Order (configurable for SL or TP)
+// API Route: Place SL-Limit Order (uses data from frontend)
 import { NextRequest, NextResponse } from 'next/server';
 import { dhanApi } from '@/lib/dhan-api';
 
 export async function POST(request: NextRequest) {
   try {
-    // Get optional parameters from request body
-    let customOffset: number | undefined;
-    let isTP = false;
+    // Get parameters from request body
+    const body = await request.json();
+    console.log('📥 Received SL-Limit Order Request:', JSON.stringify(body, null, 2));
     
-    try {
-      const body = await request.json();
-      customOffset = body?.offset;
-      isTP = body?.is_tp || false; // Flag to indicate if this is a Take Profit order
-    } catch {
-      // No body or invalid JSON, use default SL calculation
-    }
+    const triggerPrice = body?.trigger_price;
+    const limitPrice = body?.limit_price;
+    const positionData = body?.position_data;
 
-    // Get the last open position
-    const position = await dhanApi.getLastOpenPosition();
-    
-    if (!position) {
+    // Validate required data
+    if (
+      typeof triggerPrice !== 'number' || 
+      typeof limitPrice !== 'number' || 
+      !positionData || 
+      !positionData.symbol || 
+      !positionData.security_id
+    ) {
+      console.error('❌ Missing or invalid required data:', {
+        triggerPrice,
+        triggerPriceType: typeof triggerPrice,
+        limitPrice,
+        limitPriceType: typeof limitPrice,
+        positionData,
+        hasSymbol: !!positionData?.symbol,
+        hasSecurityId: !!positionData?.security_id
+      });
       return NextResponse.json(
-        { success: false, error: 'No open LONG position found' },
+        { success: false, error: 'Missing or invalid trigger_price, limit_price, or position_data' },
         { status: 400 }
       );
     }
 
-    // Get the actual buy price from the last traded order (not average)
-    const lastOrder = await dhanApi.getLastTradedBuyOrder();
-    const buyPrice = lastOrder?.price || position.buyAvg;
+    console.log('✅ Using frontend data:', {
+      symbol: positionData.symbol,
+      buyPrice: positionData.buy_price,
+      triggerPrice: triggerPrice,
+      limitPrice: limitPrice,
+      orderType: triggerPrice > positionData.buy_price ? 'PP (Protect Profit)' : 'SL (Stop Loss)'
+    });
     
-    console.log(`📊 Position: ${position.tradingSymbol}`);
-    console.log(`   Order Buy Price: ${lastOrder?.price || 'N/A'}`);
-    console.log(`   Position Avg Price: ${position.buyAvg}`);
-    console.log(`   Using: ${buyPrice} (from ${lastOrder?.price ? 'order' : 'position avg'})`);
-    
-    let triggerPrice: number;
-    let limitPrice: number;
-    let correlationIdPrefix: string;
-    
-    if (isTP || (customOffset && customOffset > 0)) {
-      // Take Profit logic: Buy + offset (e.g., buy at 100, TP at 112)
-      const tpOffset = customOffset || Number(process.env.NEXT_PUBLIC_TP_OFFSET) || 12;
-      triggerPrice = Number((buyPrice + tpOffset).toFixed(1));
-      limitPrice = Number((triggerPrice - 0.5).toFixed(1)); // 0.5 below trigger for guaranteed execution
-      correlationIdPrefix = 'TP_LIMIT_';
-      
-      console.log('🎯 Placing TP Limit Order:', {
-        buyPrice,
-        tpOffset,
-        triggerPrice,
-        limitPrice
-      });
-    } else {
-      // Stop Loss logic: Buy - offset (e.g., buy at 100, SL at 80)
-      const slOffset = customOffset ? Math.abs(customOffset) : (Number(process.env.NEXT_PUBLIC_SL_OFFSET_LOSS) || 20);
-      triggerPrice = Number((buyPrice - slOffset).toFixed(1));
-      limitPrice = Number((triggerPrice - 0.5).toFixed(1)); // 0.5 below trigger for better execution
-      correlationIdPrefix = 'SL_LIMIT_';
-      
-      console.log('🛡️ Placing SL Limit Order:', {
-        buyPrice,
-        slOffset,
-        triggerPrice,
-        limitPrice
-      });
-    }
+    // Determine correlation ID based on whether it's above or below buy price
+    const correlationIdPrefix = triggerPrice > positionData.buy_price ? 'PP_LIMIT_' : 'SL_LIMIT_';
 
-    if (triggerPrice <= 0 || limitPrice <= 0) {
-      return NextResponse.json(
-        { success: false, error: 'Calculated prices are invalid (negative or zero)' },
-        { status: 400 }
-      );
-    }
-
-    // Place SL-Limit SELL order
+    // Place SL-Limit SELL order with data from frontend
     const response = await dhanApi.placeStopLossLimitOrder({
       transactionType: 'SELL',
-      exchangeSegment: position.exchangeSegment,
-      productType: position.productType,
-      securityId: position.securityId,
-      quantity: position.netQty,
+      exchangeSegment: positionData.exchange_segment,
+      productType: positionData.product_type,
+      securityId: positionData.security_id,
+      quantity: positionData.quantity,
       triggerPrice: triggerPrice,
       price: limitPrice,
-      correlationId: `${correlationIdPrefix}${position.securityId}`,
+      correlationId: `${correlationIdPrefix}${positionData.security_id}`,
     });
+
+    console.log('✅ Order placed successfully:', response.orderId);
 
     return NextResponse.json({
       success: true,
       order_id: response.orderId,
       order_status: response.orderStatus,
-      buy_price: buyPrice,
+      buy_price: positionData.buy_price,
       trigger_price: triggerPrice,
       limit_price: limitPrice,
-      symbol: position.tradingSymbol,
-      quantity: position.netQty,
+      symbol: positionData.symbol,
+      quantity: positionData.quantity,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('❌ Error placing SL-Limit order:', message);
     return NextResponse.json(
       { success: false, error: message },
       { status: 500 }

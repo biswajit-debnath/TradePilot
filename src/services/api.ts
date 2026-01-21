@@ -50,6 +50,13 @@ class ApiService {
   }
 
   /**
+   * Get all open positions (options and intraday stocks)
+   */
+  async getAllPositions(): Promise<{ success: boolean; positions?: PositionDetails[]; error?: string }> {
+    return this.request('/api/all-positions');
+  }
+
+  /**
    * @deprecated Use getCurrentPosition() instead
    * Get the last traded option buy order (backwards compatibility)
    */
@@ -132,10 +139,10 @@ class ApiService {
   }
 
   /**
-   * Get all pending SL orders
+   * Get all pending orders
    */
   async getPendingSLOrders(): Promise<{ success: boolean; orders: PendingSLOrder[] }> {
-    return this.request('/api/pending-sl-orders');
+    return this.request('/api/pending-orders');
   }
 
   /**
@@ -175,6 +182,7 @@ class ApiService {
       body: JSON.stringify({
         trigger_price: options.trigger_price,
         limit_price: options.limit_price,
+        position_data: options.position_data,
       }),
     });
   }
@@ -182,7 +190,7 @@ class ApiService {
   /**
    * Get full order book
    */
-  async getOrderBook(): Promise<{ success: boolean; orders: unknown[] }> {
+  async getOrderBook(): Promise<{ success: boolean; orders?: any[]; error?: string }> {
     return this.request('/api/order-book');
   }
 
@@ -202,6 +210,23 @@ class ApiService {
   }
 
   /**
+   * Exit a specific position and cancel its pending orders
+   */
+  async exitPosition(securityId: string): Promise<{ 
+    success: boolean; 
+    position_exited?: boolean; 
+    orders_cancelled?: number; 
+    message?: string; 
+    errors?: string[];
+    error?: string;
+  }> {
+    return this.request('/api/exit-position', {
+      method: 'POST',
+      body: JSON.stringify({ security_id: securityId }),
+    });
+  }
+
+  /**
    * Exit all open positions and cancel all pending orders
    */
   async exitAll(): Promise<{ 
@@ -215,6 +240,13 @@ class ApiService {
     return this.request('/api/exit-all', {
       method: 'POST',
     });
+  }
+
+  /**
+   * Get trade book (completed trades)
+   */
+  async getTradeBook(): Promise<{ success: boolean; trades?: any[]; error?: string }> {
+    return this.request('/api/trade-book');
   }
 }
 

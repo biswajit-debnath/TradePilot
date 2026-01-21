@@ -167,7 +167,7 @@ DHAN_ACCESS_TOKEN=eyJhbGciOiJIUzUxMiJ9.eyJkaGFuQ...
 NEXT_PUBLIC_DHAN_ACCESS_TOKEN=eyJhbGciOiJIUzUxMiJ9.eyJkaGFuQ...
 
 # Trading Configuration
-NEXT_PUBLIC_SL_OFFSET=2
+NEXT_PUBLIC_PP_OFFSET=2
 NEXT_PUBLIC_SL_LIMIT_OFFSET=-20
 NEXT_PUBLIC_TAKE_PROFIT_OFFSET=12
 ```
@@ -242,7 +242,7 @@ dhan_sl_nextjs/
 │   │       ├── place-sl-market-order/
 │   │       ├── place-sl-limit-order/
 │   │       ├── place-limit-order/
-│   │       ├── pending-sl-orders/
+│   │       ├── pending-orders/
 │   │       ├── modify-sl-order/
 │   │       ├── cancel-sl-order/
 │   │       ├── exit-all/
@@ -362,7 +362,7 @@ Click the refresh button to fetch latest position data:
 **Configuration**:
 
 ```env
-NEXT_PUBLIC_SL_OFFSET=2
+NEXT_PUBLIC_PP_OFFSET=2
 ```
 
 #### SL-Limit Order (Buy-20)
@@ -587,7 +587,7 @@ Place LIMIT order (for take-profit).
 }
 ```
 
-#### GET /api/pending-sl-orders
+#### GET /api/pending-orders
 
 Get all pending orders for current position.
 
@@ -1285,7 +1285,7 @@ NODE_ENV=production
 
 # Public (safe to expose)
 NEXT_PUBLIC_DHAN_CLIENT_ID=<your_client_id>
-NEXT_PUBLIC_SL_OFFSET=2
+NEXT_PUBLIC_PP_OFFSET=2
 NEXT_PUBLIC_SL_LIMIT_OFFSET=-20
 NEXT_PUBLIC_TAKE_PROFIT_OFFSET=12
 

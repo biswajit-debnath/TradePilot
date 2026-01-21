@@ -24,6 +24,7 @@ export default function TradeLive() {
   const [gainLossValue, setGainLossValue] = useState<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isLiveUpdating, setIsLiveUpdating] = useState(true);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   
   const liveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -35,7 +36,7 @@ export default function TradeLive() {
     isRefreshing,
     setIsLoading,
     setIsRefreshing,
-    fetchLastOrder,
+    fetchAllPositions,
     fetchPendingOrders,
   } = useTradingData();
 
@@ -119,7 +120,7 @@ export default function TradeLive() {
     try {
       await Promise.all([
         checkConnection(),
-        fetchLastOrder(),
+        fetchAllPositions(),
         fetchPendingOrders()
       ]);
       showAlert('✅ Data refreshed successfully', 'success');
@@ -128,18 +129,23 @@ export default function TradeLive() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [checkConnection, fetchLastOrder, fetchPendingOrders, showAlert, setIsRefreshing]);
+  }, [checkConnection, fetchAllPositions, fetchPendingOrders, showAlert, setIsRefreshing]);
 
   const exitAll = async () => {
+    if (!lastOrder) {
+      showAlert('⚠️ No position to exit', 'info');
+      return;
+    }
+
     const confirmed = confirm(
-      '⚠️ WARNING: This will EXIT ALL open positions and CANCEL ALL pending orders!\n\nAre you absolutely sure?'
+      `⚠️ WARNING: This will EXIT the current position (${lastOrder.symbol}) and CANCEL ALL its pending orders!\n\nAre you absolutely sure?`
     );
     
     if (!confirmed) return;
 
     setIsLoading(true);
     try {
-      const response = await apiService.exitAll();
+      const response = await apiService.exitPosition(lastOrder.security_id);
       if (response.success) {
         const message = response.errors && response.errors.length > 0
           ? `⚠️ Partially completed: ${response.message}\n\nErrors: ${response.errors.join(', ')}`
@@ -148,7 +154,7 @@ export default function TradeLive() {
         showAlert(message, response.errors && response.errors.length > 0 ? 'info' : 'success');
         await refreshAll();
       } else {
-        showAlert('❌ Failed to exit all: ' + response.error, 'error');
+        showAlert('❌ Failed to exit position: ' + response.error, 'error');
       }
     } catch (error) {
       showAlert('Error: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
@@ -157,11 +163,19 @@ export default function TradeLive() {
     }
   };
 
-  const handleRefreshPosition = async () => {
+  const handleRefreshPosition = useCallback(async () => {
     setIsRefreshing(true);
-    await fetchLastOrder();
+    const position = await fetchAllPositions();
     setIsRefreshing(false);
-  };
+    
+    // Auto-start live updates if position exists and not already live updating
+    if (position && !isLiveUpdating) {
+      console.log('📊 Position detected after refresh, auto-starting live updates...');
+      setTimeout(() => {
+        setIsLiveUpdating(true);
+      }, 500); // Small delay to ensure state is updated
+    }
+  }, [fetchAllPositions, isLiveUpdating, setIsRefreshing]);
 
   // Filter pending orders for current position only
   const positionPendingOrders: PendingSLOrder[] = lastOrder
@@ -184,17 +198,74 @@ export default function TradeLive() {
     const initialLoad = async () => {
       setIsRefreshing(true);
       try {
-        await Promise.all([
+        const [, position] = await Promise.all([
           checkConnection(),
-          fetchLastOrder(),
+          fetchAllPositions(),
           fetchPendingOrders()
         ]);
+
+        // Auto-start live updates if position exists
+        if (position) {
+          console.log('📊 Position detected on page load, auto-starting live updates...');
+          setTimeout(() => {
+            setIsLiveUpdating(true);
+          }, 500); // Small delay to ensure state is updated
+        }
       } finally {
         setIsRefreshing(false);
       }
     };
     initialLoad();
-  }, [checkConnection, fetchLastOrder, fetchPendingOrders, setIsRefreshing]);
+  }, [checkConnection, fetchAllPositions, fetchPendingOrders, setIsRefreshing]);
+
+  // Auto-refresh every 1 second when no position exists
+  const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  useEffect(() => {
+    // Clear any existing interval
+    if (autoRefreshIntervalRef.current) {
+      clearInterval(autoRefreshIntervalRef.current);
+      autoRefreshIntervalRef.current = null;
+    }
+
+    // Only auto-refresh if there's NO position AND auto-refresh is enabled
+    if (!lastOrder && autoRefreshEnabled) {
+      console.log('📡 No position detected - Starting auto-refresh (1s interval)');
+      autoRefreshIntervalRef.current = setInterval(async () => {
+        // Silently refresh without showing success alert
+        try {
+          await Promise.all([
+            fetchAllPositions(),
+            fetchPendingOrders()
+          ]);
+        } catch (error) {
+          console.error('Auto-refresh error:', error);
+        }
+      }, 1000); // 1 second
+    } else {
+      if (!autoRefreshEnabled) {
+        console.log('⏸️ Auto-refresh disabled by user');
+      } else {
+        console.log('✅ Position detected - Auto-refresh stopped');
+      }
+    }
+
+    // Cleanup on unmount or when lastOrder changes
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
+      }
+    };
+  }, [lastOrder, fetchAllPositions, fetchPendingOrders, autoRefreshEnabled]);
+
+  const toggleAutoRefresh = useCallback(() => {
+    setAutoRefreshEnabled(prev => {
+      const newValue = !prev;
+      showAlert(newValue ? '✅ Auto-refresh enabled' : '⏸️ Auto-refresh disabled', 'info');
+      return newValue;
+    });
+  }, [showAlert]);
 
   return (
     <div className="min-h-screen">
@@ -215,7 +286,8 @@ export default function TradeLive() {
         hasPositionsOrOrders={lastOrder !== null || pendingOrders.length > 0}
         onMenuClick={() => setIsDrawerOpen(true)}
         onRefresh={refreshAll}
-        onExitAll={exitAll}
+        autoRefresh={autoRefreshEnabled}
+        onToggleAutoRefresh={toggleAutoRefresh}
         isLoading={isLoading}
       />
       <div className="max-w-4xl mx-auto p-4 sm:p-5 md:p-6">
@@ -241,6 +313,8 @@ export default function TradeLive() {
           isLiveUpdating={isLiveUpdating}
           onRefreshPosition={handleRefreshPosition}
           onToggleLiveUpdate={toggleLiveUpdate}
+          onExitAll={exitAll}
+          isLoading={isLoading}
         />
         <PendingOrdersCard
           orders={positionPendingOrders}

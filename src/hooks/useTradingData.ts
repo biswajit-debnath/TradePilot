@@ -4,6 +4,7 @@ import { OrderDetails, PendingSLOrder } from '@/types';
 
 export function useTradingData() {
   const [lastOrder, setLastOrder] = useState<OrderDetails | null>(null);
+  const [allPositions, setAllPositions] = useState<OrderDetails[]>([]);
   const [pendingOrders, setPendingOrders] = useState<PendingSLOrder[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -23,6 +24,65 @@ export function useTradingData() {
       return null;
     }
   }, []);
+
+  // Fetch all open positions
+  const fetchAllPositions = useCallback(async () => {
+    try {
+      const response = await apiService.getAllPositions();
+      if (response.success && response.positions) {
+        // Map positions to OrderDetails format
+        const mappedPositions: OrderDetails[] = response.positions.map(pos => ({
+          order_id: pos.position_id,
+          symbol: pos.symbol,
+          order_category: pos.category,
+          option_type: pos.option_type,
+          strike_price: pos.strike_price,
+          expiry_date: pos.expiry_date,
+          quantity: pos.quantity,
+          buy_price: pos.buy_price,
+          sl_trigger_price: pos.sl_trigger_price,
+          sl_offset: pos.sl_offset,
+          security_id: pos.security_id,
+          exchange_segment: pos.exchange_segment,
+          product_type: pos.product_type,
+          unrealized_profit: pos.unrealized_profit,
+          realized_profit: pos.realized_profit,
+        }));
+        
+        setAllPositions(mappedPositions);
+        
+        // Auto-select first F&O position, or first position if no F&O
+        if (mappedPositions.length > 0) {
+          const fnoPosition = mappedPositions.find(p => 
+            ['NSE_FNO', 'BSE_FNO', 'MCX_COMM'].includes(p.exchange_segment)
+          );
+          const selectedPosition = fnoPosition || mappedPositions[0];
+          setLastOrder(selectedPosition);
+          return selectedPosition;
+        } else {
+          setLastOrder(null);
+          return null;
+        }
+      } else {
+        setAllPositions([]);
+        setLastOrder(null);
+        return null;
+      }
+    } catch (error) {
+      console.error('Error fetching all positions:', error);
+      setAllPositions([]);
+      return null;
+    }
+  }, []);
+
+  // Select a specific position
+  const selectPosition = useCallback((securityId: string) => {
+    const position = allPositions.find(p => p.security_id === securityId);
+    if (position) {
+      setLastOrder(position);
+      console.log('🎯 Selected position:', position.symbol);
+    }
+  }, [allPositions]);
 
   const fetchPendingOrders = useCallback(async () => {
     try {
@@ -94,8 +154,30 @@ export function useTradingData() {
     return found;
   }, [lastOrder, pendingOrders]);
 
+  // Find ALL existing orders for current position (LIMIT + STOP_LOSS)
+  const findAllExistingOrders = useCallback((): PendingSLOrder[] => {
+    if (!lastOrder) return [];
+    
+    const found = pendingOrders.filter(
+      (order) =>
+        order.transaction_type === 'SELL' &&
+        (order.order_type === 'LIMIT' || order.order_type === 'STOP_LOSS') &&
+        order.security_id === lastOrder.security_id &&
+        (order.status === 'PENDING' || order.status === 'TRANSIT')
+    );
+    
+    if (found.length > 0) {
+      console.log(`✅ Found ${found.length} existing order(s):`, found.map(o => `${o.order_type} (${o.order_id})`).join(', '));
+    } else {
+      console.log(`📭 No existing orders found`);
+    }
+    
+    return found;
+  }, [lastOrder, pendingOrders]);
+
   return {
     lastOrder,
+    allPositions,
     pendingOrders,
     isLoading,
     isRefreshing,
@@ -103,9 +185,12 @@ export function useTradingData() {
     setIsRefreshing,
     setPendingOrders,
     fetchLastOrder,
+    fetchAllPositions,
+    selectPosition,
     fetchPendingOrders,
     getPositionData,
     findExistingLimitOrder,
     findAnyExistingLimitOrder,
+    findAllExistingOrders,
   };
 }

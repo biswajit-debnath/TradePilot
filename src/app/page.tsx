@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiService } from '@/services/api';
 import { ConnectionStatus } from '@/types';
 import { useTradingData } from '@/hooks/useTradingData';
@@ -17,11 +17,14 @@ export default function Home() {
   const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [tpOffset, setTpOffset] = useState(Number(process.env.NEXT_PUBLIC_TP_OFFSET || 12));
+  const [ppOffset, setPpOffset] = useState(Number(process.env.NEXT_PUBLIC_PP_OFFSET || 2));
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 
   // Use custom hooks for trading data and order actions
   const {
     lastOrder,
+    allPositions,
     pendingOrders,
     isLoading,
     isRefreshing,
@@ -29,10 +32,13 @@ export default function Home() {
     setIsRefreshing,
     setPendingOrders,
     fetchLastOrder,
+    fetchAllPositions,
+    selectPosition,
     fetchPendingOrders,
     getPositionData,
     findExistingLimitOrder,
     findAnyExistingLimitOrder,
+    findAllExistingOrders,
   } = useTradingData();
 
   const showAlert = (message: string, type: 'success' | 'error' | 'info') => {
@@ -49,11 +55,13 @@ export default function Home() {
   } = useOrderActions({
     getPositionData,
     findAnyExistingLimitOrder,
+    findAllExistingOrders,
     setPendingOrders,
     fetchPendingOrders,
     setIsLoading,
     showAlert,
     lastOrder,
+    ppOffset,
   });
 
   const checkConnection = useCallback(async () => {
@@ -73,12 +81,13 @@ export default function Home() {
   const refreshAll = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      // Reset TP offset to default value
+      // Reset offsets to default values
       setTpOffset(Number(process.env.NEXT_PUBLIC_TP_OFFSET || 12));
+      setPpOffset(Number(process.env.NEXT_PUBLIC_PP_OFFSET || 2));
       
       await Promise.all([
         checkConnection(),
-        fetchLastOrder(),
+        fetchAllPositions(),
         fetchPendingOrders()
       ]);
       showAlert('✅ Data refreshed successfully', 'success');
@@ -87,26 +96,47 @@ export default function Home() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [checkConnection, fetchLastOrder, fetchPendingOrders]);
+  }, [checkConnection, fetchAllPositions, fetchPendingOrders]);
 
   const incrementTpOffset = () => {
     setTpOffset(prev => prev + 1);
+  };
+
+  const incrementTpOffset5 = () => {
+    setTpOffset(prev => prev + 5);
   };
 
   const decrementTpOffset = () => {
     setTpOffset(prev => Math.max(1, prev - 1));
   };
 
+  const decrementTpOffset5 = () => {
+    setTpOffset(prev => Math.max(1, prev - 5));
+  };
+
+  const incrementPpOffset = () => {
+    setPpOffset(prev => prev + 1);
+  };
+
+  const decrementPpOffset = () => {
+    setPpOffset(prev => Math.max(1, prev - 1));
+  };
+
   const exitAll = async () => {
+    if (!lastOrder) {
+      showAlert('⚠️ No position to exit', 'info');
+      return;
+    }
+
     const confirmed = confirm(
-      '⚠️ WARNING: This will EXIT ALL open positions and CANCEL ALL pending orders!\n\nAre you absolutely sure?'
+      `⚠️ WARNING: This will EXIT the current position (${lastOrder.symbol}) and CANCEL ALL its pending orders!\n\nAre you absolutely sure?`
     );
     
     if (!confirmed) return;
 
     setIsLoading(true);
     try {
-      const response = await apiService.exitAll();
+      const response = await apiService.exitPosition(lastOrder.security_id);
       if (response.success) {
         const message = response.errors && response.errors.length > 0
           ? `⚠️ Partially completed: ${response.message}\n\nErrors: ${response.errors.join(', ')}`
@@ -115,7 +145,7 @@ export default function Home() {
         showAlert(message, response.errors && response.errors.length > 0 ? 'info' : 'success');
         await refreshAll();
       } else {
-        showAlert('❌ Failed to exit all: ' + response.error, 'error');
+        showAlert('❌ Failed to exit position: ' + response.error, 'error');
       }
     } catch (error) {
       showAlert('Error: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
@@ -126,7 +156,7 @@ export default function Home() {
 
   const handleRefreshPosition = async () => {
     setIsRefreshing(true);
-    await fetchLastOrder();
+    await fetchAllPositions();
     setIsRefreshing(false);
   };
 
@@ -145,7 +175,7 @@ export default function Home() {
       try {
         await Promise.all([
           checkConnection(),
-          fetchLastOrder(),
+          fetchAllPositions(),
           fetchPendingOrders()
         ]);
       } finally {
@@ -153,7 +183,56 @@ export default function Home() {
       }
     };
     initialLoad();
-  }, [checkConnection, fetchLastOrder, fetchPendingOrders]);
+  }, [checkConnection, fetchAllPositions, fetchPendingOrders]);
+
+  // Auto-refresh every 1 second when no position exists
+  const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  useEffect(() => {
+    // Clear any existing interval
+    if (autoRefreshIntervalRef.current) {
+      clearInterval(autoRefreshIntervalRef.current);
+      autoRefreshIntervalRef.current = null;
+    }
+
+    // Only auto-refresh if there's NO position AND auto-refresh is enabled
+    if (!lastOrder && autoRefreshEnabled) {
+      console.log('📡 No position detected - Starting auto-refresh (1s interval)');
+      autoRefreshIntervalRef.current = setInterval(async () => {
+        // Silently refresh without showing success alert
+        try {
+          await Promise.all([
+            fetchLastOrder(),
+            fetchPendingOrders()
+          ]);
+        } catch (error) {
+          console.error('Auto-refresh error:', error);
+        }
+      }, Number(process.env.NEXT_PUBLIC_AUTO_REFRESH_INTERVAL) || 1000); // 1 second
+    } else {
+      if (!autoRefreshEnabled) {
+        console.log('⏸️ Auto-refresh disabled by user');
+      } else {
+        console.log('✅ Position detected - Auto-refresh stopped');
+      }
+    }
+
+    // Cleanup on unmount or when lastOrder changes
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
+      }
+    };
+  }, [lastOrder, fetchLastOrder, fetchPendingOrders, autoRefreshEnabled]);
+
+  const toggleAutoRefresh = useCallback(() => {
+    setAutoRefreshEnabled(prev => {
+      const newValue = !prev;
+      showAlert(newValue ? '✅ Auto-refresh enabled' : '⏸️ Auto-refresh disabled', 'info');
+      return newValue;
+    });
+  }, []);
 
   return (
     <div className="min-h-screen">
@@ -174,15 +253,18 @@ export default function Home() {
         hasPositionsOrOrders={lastOrder !== null || pendingOrders.length > 0}
         onMenuClick={() => setIsDrawerOpen(true)}
         onRefresh={refreshAll}
-        onExitAll={exitAll}
+        autoRefresh={autoRefreshEnabled}
+        onToggleAutoRefresh={toggleAutoRefresh}
         isLoading={isLoading}
       />
       <div className="max-w-4xl mx-auto p-4 sm:p-5 md:p-6">
         <PositionCard
           lastOrder={lastOrder}
+          allPositions={allPositions}
           isRefreshing={isRefreshing}
           isLoading={isLoading}
           tpOffset={tpOffset}
+          ppOffset={ppOffset}
           hasExistingLimitOrder={hasExistingLimitOrder}
           onRefreshPosition={handleRefreshPosition}
           onPlaceProtectiveSL={placeProtectiveLimitOrder}
@@ -190,6 +272,11 @@ export default function Home() {
           onPlaceTakeProfit={() => placeTakeProfitOrder(tpOffset)}
           onIncrementTpOffset={incrementTpOffset}
           onDecrementTpOffset={decrementTpOffset}
+          onIncrementTpOffset5={incrementTpOffset5}
+          onDecrementTpOffset5={decrementTpOffset5}
+          onIncrementPpOffset={incrementPpOffset}
+          onDecrementPpOffset={decrementPpOffset}
+          onSelectPosition={selectPosition}
         />
         <PendingOrdersCard
           orders={positionPendingOrders}

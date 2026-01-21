@@ -83,6 +83,9 @@ export interface PendingSLOrder {
   status: string;
   create_time: string;
   security_id: string;
+  buy_price: number | null;
+  points: number | null;
+  potential_pl: number | null;
 }
 
 export interface ConnectionStatus {
@@ -163,4 +166,58 @@ export interface LivePositionData {
   gainLossPercentage: number;
   gainLossValue: number;
   lastUpdated: Date;
+}
+
+// Trade History Types
+export interface Trade {
+  tradeId: string;
+  orderId: string;
+  symbol: string;
+  securityId: string;
+  tradingSymbol: string;
+  exchangeSegment: string;
+  transactionType: 'BUY' | 'SELL';
+  quantity: number;
+  price: number;
+  tradeTime: string;
+  exchangeTime: string;
+  drvExpiryDate: string | null;
+  drvOptionType: 'CALL' | 'PUT' | 'NA' | null;
+  drvStrikePrice: number;
+  category: 'OPTION' | 'STOCK';
+}
+
+export interface TradeJournalEntry {
+  id: string;
+  symbol: string;
+  category: 'OPTION' | 'STOCK';
+  optionType: 'CALL' | 'PUT' | null;
+  strikePrice: number;
+  expiryDate: string;
+  entryTime: string;
+  exitTime: string;
+  entryPrice: number;
+  exitPrice: number;
+  quantity: number;
+  profitLoss: number;
+  profitLossPercentage: number;
+  duration: string; // e.g., "2h 15m"
+  buyOrderId: string;
+  sellOrderId: string;
+}
+
+export interface TradeAnalytics {
+  totalTrades: number;
+  totalProfitLoss: number;
+  winningTrades: number;
+  losingTrades: number;
+  averageProfit: number;
+  averageLoss: number;
+  winRate: number;
+  profitFactor: number;
+  largestWin: number;
+  largestLoss: number;
+  totalBuyVolume: number;
+  totalSellVolume: number;
+  totalPoints: number;
 }

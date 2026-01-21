@@ -6,7 +6,7 @@ interface HowItWorksModalProps {
 export default function HowItWorksModal({ isOpen, onClose }: HowItWorksModalProps) {
   if (!isOpen) return null;
 
-  const slOffset = process.env.NEXT_PUBLIC_SL_OFFSET || '2';
+  const slOffset = process.env.NEXT_PUBLIC_PP_OFFSET || '2';
   const slOffsetLoss = process.env.NEXT_PUBLIC_SL_OFFSET_LOSS || '20';
   const tpOffset = process.env.NEXT_PUBLIC_TP_OFFSET || '12';
 

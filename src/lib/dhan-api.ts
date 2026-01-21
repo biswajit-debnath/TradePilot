@@ -96,6 +96,18 @@ class DhanApiService {
   }
 
   /**
+   * Get trade history (filled orders)
+   */
+  async getTradeBook(): Promise<DhanOrder[]> {
+    const orders = await this.getOrderBook();
+    // Filter only TRADED orders (completed trades)
+    return orders.filter(order => 
+      order.orderStatus === 'TRADED' || 
+      (order.orderStatus === 'PART_TRADED' && order.filledQty > 0)
+    );
+  }
+
+  /**
    * Get a specific order by ID
    */
   async getOrderById(orderId: string): Promise<DhanOrder> {
@@ -481,6 +493,98 @@ class DhanApiService {
     return orders.filter(
       (order) => (order.orderStatus === 'PENDING' || order.orderStatus === 'TRANSIT') || order.orderStatus === "TRIGGERED"
     );
+  }
+
+  /**
+   * Exit a specific position and cancel all its pending orders
+   */
+  async exitPosition(securityId: string): Promise<{
+    positionExited: boolean;
+    ordersCancelled: number;
+    errors: string[];
+  }> {
+    const errors: string[] = [];
+    let positionExited = false;
+    let ordersCancelled = 0;
+
+    try {
+      // Get all open positions and find the specific one
+      const positions = await this.getPositions();
+      const position = positions.find(p => p.securityId === securityId);
+      
+      if (!position) {
+        errors.push(`Position not found for security ID: ${securityId}`);
+        console.log(`⚠️ No position found for security ID: ${securityId}`);
+      } else {
+        console.log(`Found position: ${position.tradingSymbol} - Net Qty: ${position.netQty}, Type: ${position.positionType}`);
+        
+        // Only exit if there's a net position
+        if (position.netQty !== 0 && position.positionType !== 'CLOSED') {
+          try {
+            const transactionType = position.netQty > 0 ? 'SELL' : 'BUY';
+            const quantity = Math.abs(position.netQty);
+            
+            console.log(`Placing exit order: ${transactionType} ${quantity} of ${position.tradingSymbol}`);
+
+            await this.placeOrder({
+              dhanClientId: this.clientId,
+              transactionType,
+              exchangeSegment: position.exchangeSegment,
+              productType: position.productType,
+              orderType: 'MARKET',
+              validity: 'DAY',
+              securityId: position.securityId,
+              quantity: quantity.toString(),
+              afterMarketOrder: false,
+              correlationId: `EXIT_${position.securityId}`,
+            });
+
+            positionExited = true;
+            console.log(`✅ Exited position: ${position.tradingSymbol} - ${transactionType} ${quantity}`);
+          } catch (error) {
+            const message = `Failed to exit ${position.tradingSymbol}: ${error instanceof Error ? error.message : 'Unknown'}`;
+            errors.push(message);
+            console.error(message);
+          }
+        } else {
+          console.log(`⚠️ Position already closed or zero quantity for ${position.tradingSymbol}`);
+        }
+      }
+
+      // Get all pending orders for this security
+      const pendingOrders = await this.getPendingOrders();
+      const positionOrders = pendingOrders.filter(order => order.securityId === securityId);
+
+      console.log(`Found ${positionOrders.length} pending orders for security ${securityId} to cancel.`);
+
+      // Cancel each pending order for this position
+      for (const order of positionOrders) {
+        try {
+          console.log(`Cancelling order: ${order.orderId} - ${order.tradingSymbol}`);
+
+          await this.cancelOrder(order.orderId);
+          ordersCancelled++;
+          console.log(`✅ Cancelled order: ${order.orderId} - ${order.tradingSymbol}`);
+        } catch (error) {
+          const message = `Failed to cancel order ${order.orderId}: ${error instanceof Error ? error.message : 'Unknown'}`;
+          errors.push(message);
+          console.error(message);
+        }
+      }
+
+      console.log(`Total: Position exited: ${positionExited}, Orders cancelled: ${ordersCancelled}`);
+
+    } catch (error) {
+      const message = `Exit position failed: ${error instanceof Error ? error.message : 'Unknown'}`;
+      errors.push(message);
+      console.error(message);
+    }
+
+    return {
+      positionExited,
+      ordersCancelled,
+      errors,
+    };
   }
 
   /**

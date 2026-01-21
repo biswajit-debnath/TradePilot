@@ -58,7 +58,7 @@ export async function GET() {
     console.log(`   Position Avg Price: ${position.buyAvg}`);
     console.log(`   Using: ${buyPrice} (from ${lastOrder?.price ? 'order' : 'position avg'})`);
     
-    const slTriggerPrice = buyPrice + DHAN_CONFIG.SL_OFFSET;
+    const slTriggerPrice = buyPrice + DHAN_CONFIG.TP_OFFSET;
     const optionType = getOptionType(position);
     const positionCategory = getPositionCategory(position);
 
@@ -74,7 +74,7 @@ export async function GET() {
         quantity: position.netQty, // Use net quantity
         buy_price: buyPrice,
         sl_trigger_price: slTriggerPrice,
-        sl_offset: DHAN_CONFIG.SL_OFFSET,
+        sl_offset: DHAN_CONFIG.TP_OFFSET,
         security_id: position.securityId,
         exchange_segment: position.exchangeSegment,
         product_type: position.productType,

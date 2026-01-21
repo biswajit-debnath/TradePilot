@@ -19,7 +19,7 @@ export default function Alert({ message, type }: AlertProps) {
 
   return (
     <div 
-      className={`fixed top-20 left-1/2 -translate-x-1/2 z-50 max-w-md w-full mx-4 transition-all duration-300 ease-out ${
+      className={`fixed top-20 left-1/2 -translate-x-1/2 z-9999 max-w-md w-full mx-4 transition-all duration-300 ease-out ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'
       }`}
     >
