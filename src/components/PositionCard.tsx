@@ -124,7 +124,7 @@ export default function PositionCard({
                   <span className="text-sm md:text-base">Placing...</span>
                 </span>
               ) : (
-                `🛡️ SL-Market -${slOffsetLoss}`
+                `🛡️ SL-Limit -${slOffsetLoss}`
               )}
             </button>
 

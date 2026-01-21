@@ -112,10 +112,56 @@ export function useOrderActions({
     }
   }, [lastOrder, getPositionData, findAnyExistingLimitOrder, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert]);
 
-  const placeProtectiveLimitOrder = useCallback(() => {
-    const offset = Number(process.env.NEXT_PUBLIC_SL_OFFSET || 2);
-    handleOrderAction(offset, false, 'Protective SL');
-  }, [handleOrderAction]);
+  const placeProtectiveLimitOrder = useCallback(async () => {
+    if (!lastOrder) {
+      showAlert('❌ No position found. Please refresh data.', 'error');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const positionData = getPositionData();
+      if (!positionData) {
+        showAlert('❌ Position data not available. Please refresh.', 'error');
+        return;
+      }
+
+      const offset = -(Number(process.env.NEXT_PUBLIC_SL_OFFSET) || 2);
+      const triggerPrice = Number((positionData.buy_price + offset).toFixed(1));
+      const limitPrice = Number((triggerPrice - 0.5).toFixed(1)); // Limit price slightly below trigger
+
+      // Check for ANY existing order and cancel it
+      const existingOrder = findAnyExistingLimitOrder();
+      if (existingOrder) {
+        const existingType = existingOrder.limit_price > positionData.buy_price ? 'TP' : 'SL';
+        console.log(`🔄 Replacing existing ${existingType} order (${existingOrder.order_id}) with Protective SL-Limit order`);
+        
+        await apiService.cancelSLOrder(existingOrder.order_id);
+        setPendingOrders(prev => prev.filter(o => o.order_id !== existingOrder.order_id));
+      }
+
+      // Place STOP_LOSS_LIMIT order
+      console.log(`🔻 Placing Protective SL-Limit Order: { buyPrice: ${positionData.buy_price}, offset: ${offset}, triggerPrice: ${triggerPrice}, limitPrice: ${limitPrice} }`);
+      const response = await apiService.placeStopLossLimitOrder({
+        trigger_price: triggerPrice,
+        limit_price: limitPrice,
+        position_data: positionData,
+      });
+
+      if (response.success) {
+        showAlert(`✅ Protective SL-Limit Order Placed! Trigger: ₹${triggerPrice} | Limit: ₹${limitPrice}`, 'success');
+        
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        await fetchPendingOrders();
+      } else {
+        showAlert('❌ Failed: ' + response.error, 'error');
+      }
+    } catch (error) {
+      showAlert('Error: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [lastOrder, getPositionData, findAnyExistingLimitOrder, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert]);
 
   const placeMainStopLossOrder = useCallback(async () => {
     if (!lastOrder) {
@@ -133,26 +179,28 @@ export function useOrderActions({
 
       const offset = -(Number(process.env.NEXT_PUBLIC_SL_OFFSET_LOSS) || 20);
       const triggerPrice = Number((positionData.buy_price + offset).toFixed(1));
+      const limitPrice = Number((triggerPrice - 0.5).toFixed(1)); // Limit price slightly below trigger
 
       // Check for ANY existing order and cancel it
       const existingOrder = findAnyExistingLimitOrder();
       if (existingOrder) {
         const existingType = existingOrder.limit_price > positionData.buy_price ? 'TP' : 'SL';
-        console.log(`🔄 Replacing existing ${existingType} order (${existingOrder.order_id}) with SL-M order`);
+        console.log(`🔄 Replacing existing ${existingType} order (${existingOrder.order_id}) with SL-Limit order`);
         
         await apiService.cancelSLOrder(existingOrder.order_id);
         setPendingOrders(prev => prev.filter(o => o.order_id !== existingOrder.order_id));
       }
 
-      // Place STOP_LOSS_MARKET order
-      console.log(`🛡️ Placing SL-Market Order: { buyPrice: ${positionData.buy_price}, offset: ${offset}, triggerPrice: ${triggerPrice} }`);
-      const response = await apiService.placeStopLossMarketOrder({
+      // Place STOP_LOSS_LIMIT order (works better for F&O)
+      console.log(`🛡️ Placing SL-Limit Order: { buyPrice: ${positionData.buy_price}, offset: ${offset}, triggerPrice: ${triggerPrice}, limitPrice: ${limitPrice} }`);
+      const response = await apiService.placeStopLossLimitOrder({
         trigger_price: triggerPrice,
+        limit_price: limitPrice,
         position_data: positionData,
       });
 
       if (response.success) {
-        showAlert(`✅ SL-Market Order Placed! Trigger: ₹${triggerPrice}`, 'success');
+        showAlert(`✅ SL-Limit Order Placed! Trigger: ₹${triggerPrice} | Limit: ₹${limitPrice}`, 'success');
         
         await new Promise(resolve => setTimeout(resolve, 1500));
         await fetchPendingOrders();

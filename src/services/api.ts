@@ -163,6 +163,23 @@ class ApiService {
   }
 
   /**
+   * Place a stop-loss limit order (better for F&O - triggers at trigger_price and executes at limit_price)
+   */
+  async placeStopLossLimitOrder(options: {
+    trigger_price: number;
+    limit_price: number;
+    position_data: PositionData;
+  }): Promise<PlaceSLOrderResponse> {
+    return this.request<PlaceSLOrderResponse>('/api/place-sl-limit-order', {
+      method: 'POST',
+      body: JSON.stringify({
+        trigger_price: options.trigger_price,
+        limit_price: options.limit_price,
+      }),
+    });
+  }
+
+  /**
    * Get full order book
    */
   async getOrderBook(): Promise<{ success: boolean; orders: unknown[] }> {
