@@ -22,7 +22,7 @@ interface LivePositionCardProps {
 const DEFAULT_FIELDS: FieldConfig[] = [
   // Position 1-4: Basic Info
   { id: 'symbol', label: 'Symbol', enabled: true, category: 'basic', order: 0 },
-  { id: 'category', label: 'Category', enabled: true, category: 'basic', order: 1 },
+  { id: 'category', label: 'Category', enabled: false, category: 'basic', order: 1 },
   { id: 'quantity', label: 'Quantity', enabled: true, category: 'basic', order: 2 },
   { id: 'exchangeSegment', label: 'Exchange Segment', enabled: false, category: 'basic', order: 3 },
   
@@ -324,7 +324,7 @@ export default function LivePositionCard({
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 mb-4 md:mb-5">
         <div className="flex items-center gap-2 md:gap-3">
           <h2 className="text-lg md:text-xl font-semibold text-cyan-400">
-            📊 Live Position {lastOrder && `(${lastOrder.order_category})`}
+            📊 Live Position
           </h2>
           
           {/* Settings Icon */}
@@ -350,32 +350,6 @@ export default function LivePositionCard({
               ⛔ Exit
             </button>
           )}
-        </div>
-        
-        {/* Live Update Toggle */}
-        <div className="flex items-center gap-2">
-          {isLiveUpdating && (
-            <span className="flex items-center gap-1 text-xs text-green-400">
-              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-              Live
-            </span>
-          )}
-          <button
-            onClick={onToggleLiveUpdate}
-            className={`relative w-12 h-6 rounded-full transition-all ${
-              isLiveUpdating 
-                ? 'bg-green-500/30 border border-green-500/50' 
-                : 'bg-gray-700 border border-gray-600'
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 w-5 h-5 rounded-full transition-all ${
-                isLiveUpdating 
-                  ? 'left-6 bg-green-400 shadow-lg shadow-green-500/50' 
-                  : 'left-0.5 bg-gray-400'
-              }`}
-            />
-          </button>
         </div>
       </div>
 

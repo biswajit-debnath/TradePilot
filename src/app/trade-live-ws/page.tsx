@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiService } from '@/services/api';
 import { ConnectionStatus, OrderDetails, PendingSLOrder } from '@/types';
 import { useTradingData } from '@/hooks/useTradingData';
+import { useOrderActions } from '@/hooks/useOrderActions';
 import { DhanWebSocketService, TickerData, FeedMode } from '@/lib/dhan-websocket';
 import Alert from '@/components/Alert';
 import Navbar from '@/components/Navbar';
@@ -29,9 +30,18 @@ export default function TradeLiveWS() {
   const [wsReconnectAttempt, setWsReconnectAttempt] = useState(0);
   const [feedMode, setFeedMode] = useState<FeedMode>('QUOTE'); // Default to QUOTE for faster updates
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+  const [isSpeedSectionOpen, setIsSpeedSectionOpen] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
+  const [tpOffset, setTpOffset] = useState(Number(process.env.NEXT_PUBLIC_TP_OFFSET || 12));
+  const [ppOffset, setPpOffset] = useState(Number(process.env.NEXT_PUBLIC_PP_OFFSET || 2));
 
 
   const wsService = useRef<DhanWebSocketService | null>(null);
+
+  const showAlert = useCallback((message: string, type: 'success' | 'error' | 'info') => {
+    setAlert({ message, type });
+    setTimeout(() => setAlert(null), 5000);
+  }, []);
 
   // Use custom hooks for trading data
   const {
@@ -41,14 +51,30 @@ export default function TradeLiveWS() {
     isRefreshing,
     setIsLoading,
     setIsRefreshing,
+    setPendingOrders,
     fetchAllPositions,
     fetchPendingOrders,
+    getPositionData,
+    findAnyExistingLimitOrder,
+    findAllExistingOrders,
   } = useTradingData();
 
-  const showAlert = useCallback((message: string, type: 'success' | 'error' | 'info') => {
-    setAlert({ message, type });
-    setTimeout(() => setAlert(null), 5000);
-  }, []);
+  // Use order actions hook
+  const {
+    placeProtectiveLimitOrder,
+    placeMainStopLossOrder,
+    placeTakeProfitOrder,
+  } = useOrderActions({
+    getPositionData,
+    findAnyExistingLimitOrder,
+    findAllExistingOrders,
+    setPendingOrders,
+    fetchPendingOrders,
+    setIsLoading,
+    showAlert,
+    lastOrder,
+    ppOffset,
+  });
 
   const checkConnection = useCallback(async () => {
     try {
@@ -416,6 +442,15 @@ export default function TradeLiveWS() {
     });
   }, [showAlert]);
 
+  const incrementTpOffset = () => setTpOffset(prev => prev + 1);
+  const decrementTpOffset = () => setTpOffset(prev => Math.max(1, prev - 1));
+  const incrementTpOffset5 = () => setTpOffset(prev => prev + 5);
+  const decrementTpOffset5 = () => setTpOffset(prev => Math.max(1, prev - 5));
+  const incrementPpOffset = () => setPpOffset(prev => prev + 1);
+  const decrementPpOffset = () => setPpOffset(prev => Math.max(1, prev - 1));
+
+  const slOffsetLoss = process.env.NEXT_PUBLIC_SL_OFFSET_LOSS || '20';
+
   return (
     <div className="min-h-screen">
       {alert && <Alert message={alert.message} type={alert.type} />}
@@ -441,75 +476,141 @@ export default function TradeLiveWS() {
       />
       <div className="max-w-4xl mx-auto p-4 sm:p-5 md:p-6">
         {/* Page Title */}
-        <div className="mb-4 md:mb-6">
+        <div className="mb-3">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
-                <span className="text-3xl">⚡</span>
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-lg md:text-xl font-bold text-white flex items-center gap-1.5">
+                <span className="text-xl">⚡</span>
                 Trade Live (WebSocket)
               </h1>
-              <p className="text-gray-400 text-sm mt-1">
-                Real-time tick-by-tick updates via WebSocket
-              </p>
+              {/* Info Icon with Tooltip */}
+              <div className="relative">
+                <button
+                  onMouseEnter={() => setShowInfo(true)}
+                  onMouseLeave={() => setShowInfo(false)}
+                  className="text-gray-400 hover:text-gray-300 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                {showInfo && (
+                  <div className="absolute left-0 top-5 z-50 w-64 px-3 py-2 text-xs text-gray-300 bg-gray-900 border border-gray-700 rounded-lg shadow-lg">
+                    Real-time tick-by-tick updates via WebSocket
+                  </div>
+                )}
+              </div>
             </div>
             
-            {/* WebSocket Status Indicator */}
-            <div className="flex items-center gap-2 px-3 py-2 bg-black/30 rounded-lg border border-gray-700">
-              <div className={`w-3 h-3 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
-              <span className="text-xs text-gray-400">
-                {wsConnected ? 'Connected' : wsReconnectAttempt > 0 ? `Reconnecting (${wsReconnectAttempt})` : 'Disconnected'}
-              </span>
+            {/* Right side: Live Toggle, Connected Status */}
+            <div className="flex items-center gap-1.5">
+              {/* Live Update Toggle */}
+              <div className="flex items-center gap-1.5">
+                {isLiveUpdating && (
+                  <span className="flex items-center gap-1 text-[10px] text-green-400">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                    Live
+                  </span>
+                )}
+                <button
+                  onClick={toggleLiveUpdate}
+                  className={`relative w-10 h-5 rounded-full transition-all ${
+                    isLiveUpdating 
+                      ? 'bg-green-500/30 border border-green-500/50' 
+                      : 'bg-gray-700 border border-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${
+                      isLiveUpdating 
+                        ? 'left-5 bg-green-400 shadow-lg shadow-green-500/50' 
+                        : 'left-0.5 bg-gray-400'
+                    }`}
+                  />
+                </button>
+              </div>
+              
+              {/* WebSocket Status Indicator */}
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-black/30 rounded-md border border-gray-700">
+                <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
+                <span className="text-[10px] text-gray-400">
+                  {wsConnected ? 'Connected' : wsReconnectAttempt > 0 ? `Reconnecting (${wsReconnectAttempt})` : 'Disconnected'}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Feed Mode Selector */}
-          <div className="mt-4 p-4 bg-linear-to-r from-purple-900/20 to-blue-900/20 rounded-lg border border-purple-500/30">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-purple-300 mb-1">Update Speed</h3>
-                <p className="text-xs text-gray-400">Choose how fast you want price updates</p>
+          {/* Feed Mode Selector - Collapsible */}
+          <div className="mt-3">
+            <button
+              onClick={() => setIsSpeedSectionOpen(!isSpeedSectionOpen)}
+              className="w-full flex items-center justify-between px-3 py-2 bg-black/30 rounded-lg border border-purple-500/30 hover:bg-purple-900/20 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-purple-300">Update Speed</span>
+                <span className="text-xs px-2 py-0.5 bg-purple-600 text-white rounded">
+                  {feedMode}
+                </span>
               </div>
-              <div className="flex gap-2 sm:ml-auto">
-                <button
-                  onClick={() => setFeedMode('TICKER')}
-                  disabled={isLiveUpdating}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                    feedMode === 'TICKER'
-                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/50'
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  } ${isLiveUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                >
-                  TICKER<br/><span className="text-[10px]">1 sec</span>
-                </button>
-                <button
-                  onClick={() => setFeedMode('QUOTE')}
-                  disabled={isLiveUpdating}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                    feedMode === 'QUOTE'
-                      ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/50'
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  } ${isLiveUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                >
-                  QUOTE<br/><span className="text-[10px]">~200ms</span>
-                </button>
-                <button
-                  onClick={() => setFeedMode('FULL')}
-                  disabled={isLiveUpdating}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
-                    feedMode === 'FULL'
-                      ? 'bg-green-600 text-white shadow-lg shadow-green-500/50'
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
-                  } ${isLiveUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                >
-                  FULL<br/><span className="text-[10px]">~100ms</span>
-                </button>
+              <svg
+                className={`w-4 h-4 text-gray-400 transition-transform ${
+                  isSpeedSectionOpen ? 'rotate-180' : ''
+                }`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {isSpeedSectionOpen && (
+              <div className="mt-2 p-3 bg-gradient-to-r from-purple-900/20 to-blue-900/20 rounded-lg border border-purple-500/30">
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-gray-400">Choose how fast you want price updates</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setFeedMode('TICKER')}
+                      disabled={isLiveUpdating}
+                      className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-all ${
+                        feedMode === 'TICKER'
+                          ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/50'
+                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      } ${isLiveUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      TICKER<br/><span className="text-[10px]">1 sec</span>
+                    </button>
+                    <button
+                      onClick={() => setFeedMode('QUOTE')}
+                      disabled={isLiveUpdating}
+                      className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-all ${
+                        feedMode === 'QUOTE'
+                          ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/50'
+                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      } ${isLiveUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      QUOTE<br/><span className="text-[10px]">~200ms</span>
+                    </button>
+                    <button
+                      onClick={() => setFeedMode('FULL')}
+                      disabled={isLiveUpdating}
+                      className={`flex-1 px-2 py-1.5 rounded text-xs font-medium transition-all ${
+                        feedMode === 'FULL'
+                          ? 'bg-green-600 text-white shadow-lg shadow-green-500/50'
+                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                      } ${isLiveUpdating ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      FULL<br/><span className="text-[10px]">~100ms</span>
+                    </button>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {feedMode === 'TICKER' && '📊 Updates every 1 second - Most stable, lowest bandwidth'}
+                    {feedMode === 'QUOTE' && '🚀 Fast updates (~5 per second) - Recommended for most users'}
+                    {feedMode === 'FULL' && '⚡ Fastest updates (~10 per second) with market depth - Highest bandwidth'}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="mt-2 text-xs text-gray-500">
-              {feedMode === 'TICKER' && '📊 Updates every 1 second - Most stable, lowest bandwidth'}
-              {feedMode === 'QUOTE' && '🚀 Fast updates (~5 per second) - Recommended for most users'}
-              {feedMode === 'FULL' && '⚡ Fastest updates (~10 per second) with market depth - Highest bandwidth'}
-            </div>
+            )}
           </div>
         </div>
 
@@ -527,6 +628,127 @@ export default function TradeLiveWS() {
           onExitAll={exitAll}
           isLoading={isLoading}
         />
+
+        {/* Order Action Buttons */}
+        {lastOrder && (
+          <div className="glass-card rounded-xl p-4 md:p-5 mb-4 md:mb-5">
+            <h3 className="text-base md:text-lg font-semibold text-cyan-400 mb-3 md:mb-4">
+              🎯 Quick Actions
+            </h3>
+            <div className="space-y-2 md:space-y-3">
+              {/* PP Button with Integrated Counter Controls */}
+              <div className="flex items-center gap-0 bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
+                {/* Decrement Button */}
+                <button
+                  onClick={decrementPpOffset}
+                  disabled={isLoading || ppOffset <= 1}
+                  className="px-3 md:px-4 py-3 md:py-4 text-lg md:text-xl font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  −
+                </button>
+                
+                {/* Main PP Button (Center) */}
+                <button
+                  onClick={placeProtectiveLimitOrder}
+                  disabled={isLoading}
+                  className="flex-1 py-3 md:py-4 px-4 md:px-6 font-semibold text-base md:text-lg bg-gradient-to-r from-green-500 to-emerald-600 hover:shadow-lg hover:shadow-green-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed border-x border-slate-700"
+                >
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="w-4 h-4 md:w-5 md:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="text-sm md:text-base">Placing...</span>
+                    </span>
+                  ) : (
+                    `🔻 PP +${ppOffset}`
+                  )}
+                </button>
+                
+                {/* Increment Button */}
+                <button
+                  onClick={incrementPpOffset}
+                  disabled={isLoading}
+                  className="px-3 md:px-4 py-3 md:py-4 text-lg md:text-xl font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  +
+                </button>
+              </div>
+
+              <button
+                onClick={placeMainStopLossOrder}
+                disabled={isLoading}
+                className="w-full py-3 md:py-4 rounded-xl font-semibold text-base md:text-lg bg-gradient-to-r from-orange-500 to-red-600 hover:shadow-lg hover:shadow-orange-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 md:w-5 md:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span className="text-sm md:text-base">Placing...</span>
+                  </span>
+                ) : (
+                  `🛡️ SL-Limit -${slOffsetLoss}`
+                )}
+              </button>
+
+              {/* TP Button and Offset Control in Same Row */}
+              <div className="flex items-center gap-2">
+                {/* -5 Quick Decrement Button (Left Side) */}
+                <button
+                  onClick={decrementTpOffset5}
+                  disabled={isLoading || tpOffset <= 5}
+                  className="px-3 md:px-4 py-3 md:py-4 rounded-xl font-semibold text-sm md:text-base bg-gradient-to-r from-red-500 to-orange-600 hover:shadow-lg hover:shadow-red-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  −5
+                </button>
+
+                {/* Combined Counter and TP Button */}
+                <div className="flex-1 flex items-center gap-0 bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
+                  {/* Decrement Button */}
+                  <button
+                    onClick={decrementTpOffset}
+                    disabled={isLoading || tpOffset <= 1}
+                    className="px-3 md:px-4 py-3 md:py-4 text-lg md:text-xl font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    −
+                  </button>
+                  
+                  {/* Main TP Button (Center) */}
+                  <button
+                    onClick={() => placeTakeProfitOrder(tpOffset)}
+                    disabled={isLoading}
+                    className="flex-1 py-3 md:py-4 px-4 md:px-6 font-semibold text-base md:text-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:shadow-lg hover:shadow-cyan-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed border-x border-slate-700"
+                  >
+                    {isLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="w-4 h-4 md:w-5 md:h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span className="text-sm md:text-base">Placing...</span>
+                      </span>
+                    ) : (
+                      `🎯 TP +${tpOffset}`
+                    )}
+                  </button>
+                  
+                  {/* Increment Button */}
+                  <button
+                    onClick={incrementTpOffset}
+                    disabled={isLoading}
+                    className="px-3 md:px-4 py-3 md:py-4 text-lg md:text-xl font-bold text-slate-400 hover:bg-slate-700 hover:text-white transition disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    +
+                  </button>
+                </div>
+
+                {/* +5 Quick Increment Button (Right Side) */}
+                <button
+                  onClick={incrementTpOffset5}
+                  disabled={isLoading}
+                  className="px-3 md:px-4 py-3 md:py-4 rounded-xl font-semibold text-sm md:text-base bg-gradient-to-r from-emerald-500 to-green-600 hover:shadow-lg hover:shadow-emerald-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  +5
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <PendingOrdersCard
           orders={positionPendingOrders}
           lastOrder={lastOrder}
