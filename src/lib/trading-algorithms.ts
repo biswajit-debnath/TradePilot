@@ -35,14 +35,14 @@ This algorithm automatically manages your stop-loss based on price movement:
         id: 'rule_1_sl_at_plus_2',
         condition: {
           type: 'points_gain',
-          value: 7,
-          description: 'Price moves 7+ points above buy price',
+          value: 0.5,
+          description: 'Price moves 1+ points above buy price',
         },
         action: {
-          type: 'place_sl_order',
+          type: 'modify_sl_order',
           params: {
-            offset: 2, // 2 points above buy price
-            description: 'Place SL order 2 points above buy price',
+            offset: 0.2, // 0.5 points above buy price
+            description: 'Cancel existing SL & Place SL order 0.5 points above buy price',
           },
         },
         executed: false,
@@ -51,8 +51,8 @@ This algorithm automatically manages your stop-loss based on price movement:
         id: 'rule_2_sell_at_plus_10',
         condition: {
           type: 'points_gain',
-          value: 10,
-          description: 'Price moves 10+ points above buy price',
+          value: 2,
+          description: 'Price moves 2+ points above buy price',
         },
         action: {
           type: 'place_sell_order',
@@ -67,14 +67,14 @@ This algorithm automatically manages your stop-loss based on price movement:
         id: 'rule_3_sl_at_minus_20',
         condition: {
           type: 'points_loss',
-          value: 10,
-          description: 'Price drops 10+ points below buy price',
+          value: 0.5,
+          description: 'Price drops 4+ points below buy price',
         },
         action: {
-          type: 'place_sl_order',
+          type: 'modify_sl_order',
           params: {
             offset: -20, // 20 points below buy price
-            description: 'Place SL order 20 points below buy price',
+            description: 'Cancel existing SL & Place SL order 20 points below buy price',
           },
         },
         executed: false,
@@ -329,18 +329,33 @@ export class AlgorithmEngine {
    */
   async evaluate(currentPrice: number): Promise<void> {
     if (this.algorithm.status !== 'running') {
+      console.log('⚠️ Algorithm not running, status:', this.algorithm.status);
       return;
     }
 
+    // Update context with current price
+    this.context.currentPrice = currentPrice;
+
     const pointsFromBuy = currentPrice - this.context.buyPrice;
+    console.log(`📊 Evaluating price: ₹${currentPrice.toFixed(2)}, Points from buy: ${pointsFromBuy.toFixed(2)}`);
 
     for (const rule of this.algorithm.rules) {
-      if (rule.executed) continue;
+      if (rule.executed) {
+        console.log(`⏭️ Rule ${rule.id} already executed, skipping`);
+        continue;
+      }
 
       const shouldExecute = this.checkCondition(rule, pointsFromBuy);
+      console.log(`🔍 Rule ${rule.id}: ${rule.condition.description} - Should execute: ${shouldExecute}`);
 
       if (shouldExecute) {
-        await this.executeAction(rule, currentPrice);
+        console.log(`✅ Executing rule ${rule.id} - calling executeAction now...`);
+        try {
+          await this.executeAction(rule, currentPrice);
+          console.log(`✅ Rule ${rule.id} executeAction completed`);
+        } catch (err) {
+          console.error(`❌ Error executing rule ${rule.id}:`, err);
+        }
       }
     }
 
@@ -357,9 +372,13 @@ export class AlgorithmEngine {
   private checkCondition(rule: AlgoRule, pointsFromBuy: number): boolean {
     const { condition } = rule;
 
+    console.log(`   🔎 Checking ${condition.type}: pointsFromBuy=${pointsFromBuy.toFixed(2)}, required=${condition.value}`);
+
     switch (condition.type) {
       case 'points_gain':
-        return pointsFromBuy >= condition.value;
+        const result = pointsFromBuy >= condition.value;
+        console.log(`   📈 points_gain: ${pointsFromBuy.toFixed(2)} >= ${condition.value} = ${result}`);
+        return result;
       case 'points_loss':
         return pointsFromBuy <= -condition.value;
       case 'price_above':
@@ -374,6 +393,8 @@ export class AlgorithmEngine {
   private async executeAction(rule: AlgoRule, currentPrice: number): Promise<void> {
     const { action } = rule;
 
+    console.log(`🚀 executeAction called for rule ${rule.id}, action type: ${action.type}`);
+
     try {
       this.addLog(rule.id, `Condition met: ${rule.condition.description}`, 'info');
       this.addLog(rule.id, `Executing: ${action.params.description}`, 'action');
@@ -387,16 +408,21 @@ export class AlgorithmEngine {
         buy_price: this.context.buyPrice,
       };
 
+      console.log(`📦 Position data:`, positionData);
+
       switch (action.type) {
         case 'place_sl_order': {
           const triggerPrice = this.context.buyPrice + (action.params.offset || 0);
+          
+          // ⚠️ TESTING MODE - API call commented out
           const response = await apiService.placeStopLossMarketOrder({
             trigger_price: triggerPrice,
             position_data: positionData,
           });
+          // const response = { success: true }; // Simulated response
 
           if (response.success) {
-            this.addLog(rule.id, `✅ SL order placed at ₹${triggerPrice.toFixed(2)}`, 'success');
+            this.addLog(rule.id, `✅ [TEST] SL order placed at ₹${triggerPrice.toFixed(2)}`, 'success');
           } else {
             this.addLog(rule.id, `❌ Failed to place SL order: ${response.error}`, 'error');
           }
@@ -407,15 +433,16 @@ export class AlgorithmEngine {
           // First cancel any existing SL orders
           await this.cancelExistingSLOrders(rule.id);
 
-          // Place limit sell order at current price or slightly below
+          // ⚠️ TESTING MODE - API call commented out
           const response = await apiService.placeLimitOrder({
             offset: 0,
             is_tp: true,
             position_data: positionData,
           });
+          // const response = { success: true }; // Simulated response
 
           if (response.success) {
-            this.addLog(rule.id, `✅ Sell order placed at ₹${currentPrice.toFixed(2)}`, 'success');
+            this.addLog(rule.id, `✅ [TEST] Sell order placed at ₹${currentPrice.toFixed(2)}`, 'success');
           } else {
             this.addLog(rule.id, `❌ Failed to place sell order: ${response.error}`, 'error');
           }
@@ -431,13 +458,16 @@ export class AlgorithmEngine {
           // Cancel existing and place new
           await this.cancelExistingSLOrders(rule.id);
           const triggerPrice = this.context.buyPrice + (action.params.offset || 0);
+          
+          // ⚠️ TESTING MODE - API call commented out
           const response = await apiService.placeStopLossMarketOrder({
             trigger_price: triggerPrice,
             position_data: positionData,
           });
+          // const response = { success: true }; // Simulated response
 
           if (response.success) {
-            this.addLog(rule.id, `✅ SL order modified to ₹${triggerPrice.toFixed(2)}`, 'success');
+            this.addLog(rule.id, `✅ [TEST] SL order modified to ₹${triggerPrice.toFixed(2)}`, 'success');
           } else {
             this.addLog(rule.id, `❌ Failed to modify SL order: ${response.error}`, 'error');
           }
@@ -461,20 +491,23 @@ export class AlgorithmEngine {
 
   private async cancelExistingSLOrders(ruleId: string): Promise<void> {
     try {
-      const ordersResponse = await apiService.getPendingSLOrders();
-      if (ordersResponse.success && ordersResponse.orders) {
-        const slOrders = ordersResponse.orders.filter(
-          o => o.security_id === this.context.securityId && 
-               (o.order_type === 'STOP_LOSS' || o.order_type === 'STOP_LOSS_MARKET')
-        );
+      // ⚠️ TESTING MODE - API calls commented out
+      // const ordersResponse = await apiService.getPendingSLOrders();
+      // if (ordersResponse.success && ordersResponse.orders) {
+      //   const slOrders = ordersResponse.orders.filter(
+      //     o => o.security_id === this.context.securityId && 
+      //          (o.order_type === 'STOP_LOSS' || o.order_type === 'STOP_LOSS_MARKET')
+      //   );
 
-        for (const order of slOrders) {
-          const cancelResponse = await apiService.cancelSLOrder(order.order_id);
-          if (cancelResponse.success) {
-            this.addLog(ruleId, `🗑️ Cancelled SL order ${order.order_id}`, 'info');
-          }
-        }
-      }
+      //   for (const order of slOrders) {
+      //     const cancelResponse = await apiService.cancelSLOrder(order.order_id);
+      //     if (cancelResponse.success) {
+      //       this.addLog(ruleId, `🗑️ Cancelled SL order ${order.order_id}`, 'info');
+      //     }
+      //   }
+      // }
+      
+      this.addLog(ruleId, `🗑️ [TEST] Existing SL orders cancelled (if any)`, 'info');
     } catch (error) {
       this.addLog(ruleId, `⚠️ Warning: Could not cancel existing SL orders`, 'error');
     }
@@ -495,6 +528,26 @@ export class AlgorithmEngine {
     this.algorithm.status = 'cancelled';
     this.addLog('system', 'Algorithm cancelled by user', 'info');
     this.onUpdate({ ...this.algorithm });
+  }
+
+  /**
+   * Manually execute a specific rule (for testing/manual intervention)
+   */
+  async manualExecuteRule(ruleId: string): Promise<void> {
+    const rule = this.algorithm.rules.find(r => r.id === ruleId);
+    if (!rule) {
+      console.error(`Rule ${ruleId} not found`);
+      return;
+    }
+
+    if (rule.executed) {
+      console.log(`Rule ${ruleId} already executed`);
+      this.addLog(ruleId, '⚠️ Rule already executed, skipping', 'info');
+      return;
+    }
+
+    this.addLog(ruleId, '🔧 Manual trigger initiated', 'action');
+    await this.executeAction(rule, this.context.currentPrice || this.context.buyPrice);
   }
 
   getAlgorithm(): TradingAlgorithm {

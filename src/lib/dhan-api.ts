@@ -108,6 +108,17 @@ class DhanApiService {
   }
 
   /**
+   * Get trade history for a specific date range
+   * @param fromDate - Start date in YYYY-MM-DD format
+   * @param toDate - End date in YYYY-MM-DD format
+   * @param page - Page number (default 0)
+   */
+  async getTradeHistory(fromDate: string, toDate: string, page: number = 0): Promise<any[]> {
+    console.log(`📊 Fetching trade history from ${fromDate} to ${toDate}, page ${page}`);
+    return this.request<any[]>(`/trades/${fromDate}/${toDate}/${page}`);
+  }
+
+  /**
    * Get a specific order by ID
    */
   async getOrderById(orderId: string): Promise<DhanOrder> {

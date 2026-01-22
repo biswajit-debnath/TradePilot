@@ -2,9 +2,21 @@
 import { NextResponse } from 'next/server';
 import { dhanApi } from '@/lib/dhan-api';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const trades = await dhanApi.getTradeBook();
+    const { searchParams } = new URL(request.url);
+    const fromDate = searchParams.get('fromDate');
+    const toDate = searchParams.get('toDate');
+    
+    let trades;
+    
+    if (fromDate && toDate) {
+      // Fetch historical trades for date range
+      trades = await dhanApi.getTradeHistory(fromDate, toDate, 0);
+    } else {
+      // Fetch today's trades only (from order book)
+      trades = await dhanApi.getTradeBook();
+    }
     
     return NextResponse.json({
       success: true,

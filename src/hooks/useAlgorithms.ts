@@ -14,6 +14,7 @@ interface UseAlgorithmsReturn {
   stopAlgorithm: (algoId: string) => void;
   evaluatePrice: (currentPrice: number) => void;
   resetAlgorithms: () => void;
+  manualTriggerRule: (ruleId: string) => void;
 }
 
 export function useAlgorithms(position: OrderDetails | null): UseAlgorithmsReturn {
@@ -27,6 +28,9 @@ export function useAlgorithms(position: OrderDetails | null): UseAlgorithmsRetur
   
   // Ref to hold the current engine instance
   const engineRef = useRef<AlgorithmEngine | null>(null);
+  
+  // Ref to track running algo id (avoids stale closure issues)
+  const runningAlgoIdRef = useRef<string | null>(null);
 
   // Get the currently active algorithm
   const activeAlgorithm = algorithms.find(a => a.id === runningAlgoId) || null;
@@ -40,6 +44,7 @@ export function useAlgorithms(position: OrderDetails | null): UseAlgorithmsRetur
     // If algorithm completed or errored, clear running state
     if (updatedAlgo.status === 'completed' || updatedAlgo.status === 'error' || updatedAlgo.status === 'cancelled') {
       setRunningAlgoId(null);
+      runningAlgoIdRef.current = null;
       engineRef.current = null;
     }
   }, []);
@@ -105,6 +110,7 @@ export function useAlgorithms(position: OrderDetails | null): UseAlgorithmsRetur
 
     // Set running state
     setRunningAlgoId(algoId);
+    runningAlgoIdRef.current = algoId;
     setExecutionLogs([]); // Clear previous logs
 
     // Add initial log
@@ -135,6 +141,7 @@ export function useAlgorithms(position: OrderDetails | null): UseAlgorithmsRetur
       );
 
       setRunningAlgoId(null);
+      runningAlgoIdRef.current = null;
       engineRef.current = null;
 
       handleLogEntry({
@@ -148,10 +155,22 @@ export function useAlgorithms(position: OrderDetails | null): UseAlgorithmsRetur
 
   // Evaluate current price against algorithm rules
   const evaluatePrice = useCallback((currentPrice: number) => {
-    if (engineRef.current && runningAlgoId) {
-      engineRef.current.evaluate(currentPrice);
+    // Use refs to avoid stale closure issues
+    const currentRunningId = runningAlgoIdRef.current;
+    const currentEngine = engineRef.current;
+    
+    if (currentEngine && currentRunningId) {
+      console.log(`🎯 useAlgorithms: Evaluating price ₹${currentPrice.toFixed(2)} for algo ${currentRunningId}`);
+      currentEngine.evaluate(currentPrice);
+    } else {
+      if (!currentEngine) {
+        console.log('⚠️ useAlgorithms: No engine instance available');
+      }
+      if (!currentRunningId) {
+        console.log('⚠️ useAlgorithms: No running algorithm');
+      }
     }
-  }, [runningAlgoId]);
+  }, []); // No dependencies needed since we use refs
 
   // Reset all algorithms to initial state
   const resetAlgorithms = useCallback(() => {
@@ -164,8 +183,22 @@ export function useAlgorithms(position: OrderDetails | null): UseAlgorithmsRetur
     // Reset all algorithms from templates
     setAlgorithms(ALGO_TEMPLATES.map(template => createAlgorithmFromTemplate(template)));
     setRunningAlgoId(null);
+    runningAlgoIdRef.current = null;
     setExecutionLogs([]);
   }, []);
+
+  // Manual trigger a specific rule
+  const manualTriggerRule = useCallback((ruleId: string) => {
+    const currentRunningId = runningAlgoIdRef.current;
+    const currentEngine = engineRef.current;
+    
+    if (currentEngine && currentRunningId) {
+      console.log(`🔧 Manual trigger for rule: ${ruleId}`);
+      currentEngine.manualExecuteRule(ruleId);
+    } else {
+      console.log('⚠️ Cannot manual trigger: No running algorithm');
+    }
+  }, []); // No dependencies needed since we use refs
 
   // Cleanup on unmount
   useEffect(() => {
@@ -198,5 +231,6 @@ export function useAlgorithms(position: OrderDetails | null): UseAlgorithmsRetur
     stopAlgorithm,
     evaluatePrice,
     resetAlgorithms,
+    manualTriggerRule,
   };
 }

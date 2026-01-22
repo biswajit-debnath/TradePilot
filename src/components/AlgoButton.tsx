@@ -1,6 +1,7 @@
 // Algorithm Button Component with Info Tooltip
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { TradingAlgorithm, AlgoStatus } from '@/types/algo';
 
 interface AlgoButtonProps {
@@ -19,6 +20,24 @@ export default function AlgoButton({
   disabled = false,
 }: AlgoButtonProps) {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const handleMouseEnter = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setTooltipPosition({
+        top: rect.bottom + 8,
+        left: rect.left,
+      });
+      setShowTooltip(true);
+    }
+  };
 
   const getStatusColor = (status: AlgoStatus): string => {
     switch (status) {
@@ -51,7 +70,7 @@ export default function AlgoButton({
   };
 
   return (
-    <div className="relative">
+    <div className="relative overflow-visible">
       {/* Main Button */}
       <div className="flex items-center gap-2">
         <button
@@ -82,7 +101,8 @@ export default function AlgoButton({
 
         {/* Info Button */}
         <button
-          onMouseEnter={() => setShowTooltip(true)}
+          ref={buttonRef}
+          onMouseEnter={handleMouseEnter}
           onMouseLeave={() => setShowTooltip(false)}
           onClick={() => setShowTooltip(!showTooltip)}
           className="w-8 h-8 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center text-gray-300 hover:text-white transition-all cursor-pointer"
@@ -91,9 +111,17 @@ export default function AlgoButton({
         </button>
       </div>
 
-      {/* Tooltip */}
-      {showTooltip && (
-        <div className="absolute z-50 left-0 mt-2 w-80 p-4 bg-gray-800 border border-gray-600 rounded-xl shadow-2xl">
+      {/* Tooltip - Rendered via Portal */}
+      {mounted && showTooltip && createPortal(
+        <div 
+          className="fixed z-[9999] w-80 p-4 bg-gray-800 border border-gray-600 rounded-xl shadow-2xl"
+          style={{ 
+            top: `${tooltipPosition.top}px`, 
+            left: `${tooltipPosition.left}px` 
+          }}
+          onMouseEnter={() => setShowTooltip(true)}
+          onMouseLeave={() => setShowTooltip(false)}
+        >
           <div className="absolute -top-2 left-8 w-4 h-4 bg-gray-800 border-l border-t border-gray-600 transform rotate-45" />
           
           <h3 className="font-bold text-white mb-2 flex items-center gap-2">
@@ -137,7 +165,8 @@ export default function AlgoButton({
               </div>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

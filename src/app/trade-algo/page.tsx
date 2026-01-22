@@ -13,7 +13,7 @@ import HowItWorksModal from '@/components/HowItWorksModal';
 import LivePositionCard from '@/components/LivePositionCard';
 import PendingOrdersCard from '@/components/PendingOrdersCard';
 import AlgoPanel from '@/components/AlgoPanel';
-import AlgoStatusCard from '@/components/AlgoStatusCard';
+import AlgoTerminal from '@/components/AlgoTerminal';
 
 export default function TradeAlgo() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
@@ -56,6 +56,7 @@ export default function TradeAlgo() {
     stopAlgorithm,
     evaluatePrice,
     resetAlgorithms,
+    manualTriggerRule,
   } = useAlgorithms(lastOrder);
 
   const showAlert = useCallback((message: string, type: 'success' | 'error' | 'info') => {
@@ -238,11 +239,8 @@ export default function TradeAlgo() {
       
       // Auto-start live updates if position exists and not already live updating
       if (position && !isLiveUpdating) {
-        console.log('📊 Position detected after refresh, auto-starting live updates...');
-        setTimeout(async () => {
-          await initializeWebSocket();
-          setIsLiveUpdating(true);
-        }, 500); // Small delay to ensure state is updated
+        console.log('📊 Position detected after refresh, setting auto-start flag...');
+        shouldAutoStartRef.current = true;
       }
     } catch (error) {
       showAlert('Error refreshing data: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
@@ -283,11 +281,17 @@ export default function TradeAlgo() {
     }
   };
 
-  const handleRefreshPosition = async () => {
+  const handleRefreshPosition = useCallback(async () => {
     setIsRefreshing(true);
-    await fetchLastOrder();
+    const position = await fetchLastOrder();
     setIsRefreshing(false);
-  };
+    
+    // Auto-start live updates if position exists and not already live updating
+    if (position && !isLiveUpdating) {
+      console.log('📊 Position detected after refresh, setting auto-start flag...');
+      shouldAutoStartRef.current = true;
+    }
+  }, [fetchLastOrder, isLiveUpdating, setIsRefreshing]);
 
   // Handle algorithm start
   const handleStartAlgo = (algoId: string) => {
@@ -379,8 +383,8 @@ export default function TradeAlgo() {
       shouldAutoStartRef.current = false; // Reset flag
       
       const startWebSocket = async () => {
-        setIsLiveUpdating(true);
         await initializeWebSocket();
+        setIsLiveUpdating(true);
       };
       
       startWebSocket();
@@ -397,26 +401,33 @@ export default function TradeAlgo() {
       autoRefreshIntervalRef.current = null;
     }
 
-    // Only auto-refresh if there's NO position AND auto-refresh is enabled
-    if (!lastOrder && autoRefreshEnabled) {
-      console.log('📡 No position detected - Starting auto-refresh (1s interval)');
+    // Auto-refresh with different intervals based on position availability
+    if (autoRefreshEnabled) {
+      const interval = lastOrder 
+        ? Number(process.env.NEXT_PUBLIC_AUTO_REFRESH_ON_POSITION_INTERVAL) || 5000 // 5 seconds when position exists
+        : Number(process.env.NEXT_PUBLIC_AUTO_REFRESH_INTERVAL) || 1000; // 1 second when no position
+      
+      console.log(`📡 Starting auto-refresh (${interval}ms interval) - ${lastOrder ? 'Position detected' : 'No position'}`);
+      
       autoRefreshIntervalRef.current = setInterval(async () => {
         // Silently refresh without showing success alert
         try {
-          await Promise.all([
+          const [position] = await Promise.all([
             fetchLastOrder(),
             fetchPendingOrders()
           ]);
+          
+          // Auto-start live updates if position is found
+          if (position && !isLiveUpdating) {
+            console.log('📊 Position detected during auto-refresh, setting auto-start flag...');
+            shouldAutoStartRef.current = true;
+          }
         } catch (error) {
           console.error('Auto-refresh error:', error);
         }
-      }, 1000); // 1 second
+      }, interval);
     } else {
-      if (!autoRefreshEnabled) {
-        console.log('⏸️ Auto-refresh disabled by user');
-      } else {
-        console.log('✅ Position detected - Auto-refresh stopped');
-      }
+      console.log('⏸️ Auto-refresh disabled by user');
     }
 
     // Cleanup on unmount or when lastOrder changes
@@ -426,7 +437,7 @@ export default function TradeAlgo() {
         autoRefreshIntervalRef.current = null;
       }
     };
-  }, [lastOrder, fetchLastOrder, fetchPendingOrders, autoRefreshEnabled]);
+  }, [lastOrder, fetchLastOrder, fetchPendingOrders, autoRefreshEnabled, isLiveUpdating]);
 
   const toggleAutoRefresh = useCallback(() => {
     setAutoRefreshEnabled(prev => {
@@ -463,24 +474,53 @@ export default function TradeAlgo() {
         {/* Page Title */}
         <div className="mb-4 md:mb-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
-                <span className="text-3xl">🤖</span>
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-lg md:text-xl font-bold text-white flex items-center gap-1.5">
+                <span className="text-xl">🤖</span>
                 Algorithm Trading
               </h1>
-              <p className="text-gray-400 text-sm mt-1">
-                Automated trading with custom algorithms
-              </p>
             </div>
             
-            {/* WebSocket Status Indicator */}
-            <div className="flex items-center gap-2 px-3 py-2 bg-black/30 rounded-lg border border-gray-700">
-              <div className={`w-3 h-3 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
-              <span className="text-xs text-gray-400">
-                {wsConnected ? 'Connected' : wsReconnectAttempt > 0 ? `Reconnecting (${wsReconnectAttempt})` : 'Disconnected'}
-              </span>
+            {/* Right side: Live Toggle, Connected Status */}
+            <div className="flex items-center gap-1.5">
+              {/* Live Update Toggle */}
+              <div className="flex items-center gap-1.5">
+                {isLiveUpdating && (
+                  <span className="flex items-center gap-1 text-[10px] text-green-400">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                    Live
+                  </span>
+                )}
+                <button
+                  onClick={toggleLiveUpdate}
+                  className={`relative w-10 h-5 rounded-full transition-all ${
+                    isLiveUpdating 
+                      ? 'bg-green-500/30 border border-green-500/50' 
+                      : 'bg-gray-700 border border-gray-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 w-4 h-4 rounded-full transition-all ${
+                      isLiveUpdating 
+                        ? 'left-5 bg-green-400 shadow-lg shadow-green-500/50' 
+                        : 'left-0.5 bg-gray-400'
+                    }`}
+                  />
+                </button>
+              </div>
+              
+              {/* WebSocket Status Indicator */}
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-black/30 rounded-md border border-gray-700">
+                <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-green-400 animate-pulse' : 'bg-gray-500'}`} />
+                <span className="text-[10px] text-gray-400">
+                  {wsConnected ? 'Connected' : wsReconnectAttempt > 0 ? `Reconnecting (${wsReconnectAttempt})` : 'Disconnected'}
+                </span>
+              </div>
             </div>
           </div>
+          <p className="text-gray-400 text-xs mt-1">
+            Automated trading with custom algorithms
+          </p>
 
           {/* Feed Mode Selector */}
           <div className="mt-4 p-4 bg-linear-to-r from-purple-900/20 to-blue-900/20 rounded-lg border border-purple-500/30">
@@ -564,11 +604,12 @@ export default function TradeAlgo() {
           isLoading={isLoading}
         />
 
-        {/* Algorithm Status Card (shown when algo is running) */}
-        <AlgoStatusCard
+        {/* Algorithm Terminal (shown when algo is running) */}
+        <AlgoTerminal
           algorithm={activeAlgorithm}
           currentPrice={currentPrice}
           buyPrice={lastOrder?.buy_price || null}
+          onManualTrigger={manualTriggerRule}
         />
 
         {/* Algorithm Panel */}

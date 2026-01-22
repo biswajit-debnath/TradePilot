@@ -18,7 +18,8 @@ export default function MyTrades() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
-  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'all'>('today');
+  const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'custom' | 'all'>('today');
+  const [customDate, setCustomDate] = useState<string>('');
   const [viewMode, setViewMode] = useState<'journal' | 'all-orders'>('journal');
 
   const showAlert = (message: string, type: 'success' | 'error' | 'info') => {
@@ -51,15 +52,119 @@ export default function MyTrades() {
       setIsLoading(true);
     }
     try {
-      const response = await apiService.getOrderBook();
-      if (response.success && response.orders) {
-        setOrders(response.orders);
+      const today = new Date().toISOString().split('T')[0];
+      let response;
+      
+      // For today, use order book API; for historical dates, use trade history API
+      if (dateFilter === 'today' || (dateFilter === 'custom' && customDate === today)) {
+        // Fetch today's orders from order book
+        response = await apiService.getOrderBook();
+        if (response.success && response.orders) {
+          setOrders(response.orders);
+        } else {
+          showAlert(response.error || 'Failed to fetch trades', 'error');
+        }
       } else {
-        showAlert(response.error || 'Failed to fetch trades', 'error');
+        // Fetch historical trades for past dates
+        let fromDate: string;
+        let toDate: string;
+        
+        if (dateFilter === 'custom' && customDate) {
+          fromDate = customDate;
+          toDate = customDate;
+        } else if (dateFilter === 'week') {
+          toDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Yesterday
+          fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        } else if (dateFilter === 'month') {
+          toDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Yesterday
+          fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        } else {
+          // All time - last 90 days
+          toDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // Yesterday
+          fromDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        }
+        
+        response = await apiService.getTradeHistory(fromDate, toDate);
+        
+        if (response.success && response.trades) {
+          console.log('📊 Raw Trade History Response:', response.trades);
+          console.log('📊 Number of trades:', response.trades.length);
+          
+          // Group trades by orderId to consolidate multiple executions
+          const orderMap = new Map<string, any>();
+          
+          response.trades.forEach((trade: any) => {
+            const orderId = trade.orderId;
+            
+            if (!orderMap.has(orderId)) {
+              // First trade for this order
+              orderMap.set(orderId, {
+                orderId: trade.orderId,
+                dhanClientId: trade.dhanClientId,
+                orderStatus: 'TRADED',
+                transactionType: trade.transactionType,
+                exchangeSegment: trade.exchangeSegment,
+                productType: trade.productType,
+                orderType: trade.orderType,
+                validity: 'DAY',
+                tradingSymbol: trade.tradingSymbol || trade.customSymbol,
+                securityId: trade.securityId,
+                quantity: trade.tradedQuantity,
+                disclosedQuantity: 0,
+                price: trade.tradedPrice,
+                triggerPrice: 0,
+                afterMarketOrder: false,
+                boProfitValue: 0,
+                boStopLossValue: 0,
+                legName: '',
+                createTime: trade.exchangeTime || trade.createTime || '',
+                updateTime: trade.updateTime || '',
+                exchangeTime: trade.exchangeTime || '',
+                drvExpiryDate: trade.drvExpiryDate || null,
+                drvOptionType: trade.drvOptionType || null,
+                drvStrikePrice: trade.drvStrikePrice || 0,
+                omsErrorCode: '',
+                omsErrorDescription: '',
+                filled: trade.tradedQuantity,
+                averageTradedPrice: trade.tradedPrice,
+                filledQty: trade.tradedQuantity,
+                remainingQuantity: 0,
+                cancelledQuantity: 0,
+                algoId: '',
+                correlationId: trade.orderId,
+                totalValue: trade.tradedPrice * trade.tradedQuantity,
+                tradeCount: 1,
+              });
+            } else {
+              // Additional trade for same order - aggregate
+              const existing = orderMap.get(orderId);
+              const newQty = existing.quantity + trade.tradedQuantity;
+              const newValue = existing.totalValue + (trade.tradedPrice * trade.tradedQuantity);
+              
+              existing.quantity = newQty;
+              existing.filled = newQty;
+              existing.filledQty = newQty;
+              existing.totalValue = newValue;
+              existing.averageTradedPrice = newValue / newQty;
+              existing.price = newValue / newQty;
+              existing.tradeCount++;
+            }
+          });
+          
+          const orders = Array.from(orderMap.values());
+          
+          console.log('📊 Grouped Orders:', orders);
+          console.log('📊 Total Orders after grouping:', orders.length);
+          setOrders(orders);
+        } else {
+          showAlert(response.error || 'Failed to fetch trades', 'error');
+          setOrders([]);
+        }
       }
     } catch (error) {
       showAlert('Error fetching trades', 'error');
       console.error('Error fetching trades:', error);
+      setOrders([]);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -76,7 +181,7 @@ export default function MyTrades() {
 
   useEffect(() => {
     fetchTrades();
-  }, []);
+  }, [dateFilter, customDate]);
 
   // Process trades into journal entries
   const journalEntries = useMemo(() => {
@@ -108,7 +213,7 @@ export default function MyTrades() {
 
     console.log('📊 Unique symbols:', ordersBySymbol.size);
 
-    // Match BUY and SELL orders chronologically
+    // Match BUY and SELL orders chronologically with quantity tracking
     ordersBySymbol.forEach((group, key) => {
       // Sort by time
       group.buys.sort((a, b) => new Date(a.createTime).getTime() - new Date(b.createTime).getTime());
@@ -116,70 +221,110 @@ export default function MyTrades() {
 
       console.log(`📊 ${key}: ${group.buys.length} BUYs, ${group.sells.length} SELLs`);
 
-      // Match orders - pair each BUY with next SELL chronologically
-      const matchedBuys = new Set<string>();
-      const matchedSells = new Set<string>();
+      // Track remaining quantities for each order
+      const buyQuantities = new Map<string, number>();
+      const sellQuantities = new Map<string, number>();
+      
+      group.buys.forEach(order => buyQuantities.set(order.orderId, order.quantity));
+      group.sells.forEach(order => sellQuantities.set(order.orderId, order.quantity));
 
-      group.buys.forEach(buyOrder => {
-        // Find the first unmatched SELL that comes after this BUY
-        const matchingSell = group.sells.find(sellOrder => {
-          if (matchedSells.has(sellOrder.orderId)) {
-            return false; // Already matched
-          }
-          const buyTime = new Date(buyOrder.createTime).getTime();
-          const sellTime = new Date(sellOrder.createTime).getTime();
-          return sellTime >= buyTime; // SELL must be after or same time as BUY
+      // Match orders - use FIFO (First In First Out) approach
+      let buyIndex = 0;
+      let sellIndex = 0;
+
+      while (buyIndex < group.buys.length && sellIndex < group.sells.length) {
+        const buyOrder = group.buys[buyIndex];
+        const sellOrder = group.sells[sellIndex];
+        
+        const buyRemaining = buyQuantities.get(buyOrder.orderId) || 0;
+        const sellRemaining = sellQuantities.get(sellOrder.orderId) || 0;
+
+        if (buyRemaining === 0) {
+          buyIndex++;
+          continue;
+        }
+
+        if (sellRemaining === 0) {
+          sellIndex++;
+          continue;
+        }
+
+        // Check if SELL comes after BUY (chronologically valid)
+        const buyTime = new Date(buyOrder.createTime).getTime();
+        const sellTime = new Date(sellOrder.createTime).getTime();
+        
+        if (sellTime < buyTime) {
+          // This SELL is before the current BUY, move to next SELL
+          sellIndex++;
+          continue;
+        }
+
+        // Match the quantities
+        const matchedQty = Math.min(buyRemaining, sellRemaining);
+        
+        // Create journal entry for matched quantity
+        const duration = calculateDuration(new Date(buyOrder.createTime), new Date(sellOrder.createTime));
+        
+        const entryPrice = buyOrder.averageTradedPrice || buyOrder.price;
+        const exitPrice = sellOrder.averageTradedPrice || sellOrder.price;
+        
+        const profitLoss = (exitPrice - entryPrice) * matchedQty;
+        const profitLossPercentage = ((exitPrice - entryPrice) / entryPrice) * 100;
+
+        const category = buyOrder.drvOptionType && buyOrder.drvOptionType !== 'NA' ? 'OPTION' : 'STOCK';
+
+        // Calculate lot number (assuming 1 lot = original quantity from first order)
+        const lotSize = Math.min(...group.buys.map(o => o.quantity), ...group.sells.map(o => o.quantity));
+        const lotNumber = matchedQty / lotSize;
+
+        console.log(`✅ Matched trade: ${buyOrder.tradingSymbol} - Qty: ${matchedQty} (${lotNumber} lot${lotNumber > 1 ? 's' : ''}), Entry: ₹${entryPrice.toFixed(2)} @ ${new Date(buyOrder.createTime).toLocaleTimeString()}, Exit: ₹${exitPrice.toFixed(2)} @ ${new Date(sellOrder.createTime).toLocaleTimeString()}, P&L: ₹${profitLoss.toFixed(2)}`);
+
+        entries.push({
+          id: `${buyOrder.orderId}_${sellOrder.orderId}_${entries.length}`,
+          symbol: buyOrder.tradingSymbol,
+          category: category as 'OPTION' | 'STOCK',
+          optionType: buyOrder.drvOptionType === 'CALL' || buyOrder.drvOptionType === 'PUT' 
+            ? buyOrder.drvOptionType 
+            : null,
+          strikePrice: buyOrder.drvStrikePrice || 0,
+          expiryDate: buyOrder.drvExpiryDate || '',
+          entryTime: buyOrder.createTime,
+          exitTime: sellOrder.createTime,
+          entryPrice,
+          exitPrice,
+          quantity: matchedQty,
+          profitLoss,
+          profitLossPercentage,
+          duration,
+          buyOrderId: buyOrder.orderId,
+          sellOrderId: sellOrder.orderId,
         });
 
-        if (matchingSell) {
-          // Create trade entry
-          matchedBuys.add(buyOrder.orderId);
-          matchedSells.add(matchingSell.orderId);
+        // Update remaining quantities
+        buyQuantities.set(buyOrder.orderId, buyRemaining - matchedQty);
+        sellQuantities.set(sellOrder.orderId, sellRemaining - matchedQty);
 
-          const buyTime = new Date(buyOrder.createTime);
-          const sellTime = new Date(matchingSell.createTime);
-          const duration = calculateDuration(buyTime, sellTime);
-          
-          const entryPrice = buyOrder.averageTradedPrice || buyOrder.price;
-          const exitPrice = matchingSell.averageTradedPrice || matchingSell.price;
-          const quantity = Math.min(buyOrder.quantity, matchingSell.quantity);
-          
-          const profitLoss = (exitPrice - entryPrice) * quantity;
-          const profitLossPercentage = ((exitPrice - entryPrice) / entryPrice) * 100;
+        // Move to next order if current is fully matched
+        if (buyRemaining - matchedQty === 0) {
+          buyIndex++;
+        }
+        if (sellRemaining - matchedQty === 0) {
+          sellIndex++;
+        }
+      }
 
-          const category = buyOrder.drvOptionType && buyOrder.drvOptionType !== 'NA' ? 'OPTION' : 'STOCK';
-
-          console.log(`✅ Matched trade: ${buyOrder.tradingSymbol} - Entry: ₹${entryPrice.toFixed(2)}, Exit: ₹${exitPrice.toFixed(2)}, P&L: ₹${profitLoss.toFixed(2)}`);
-
-          entries.push({
-            id: `${buyOrder.orderId}_${matchingSell.orderId}`,
-            symbol: buyOrder.tradingSymbol,
-            category: category as 'OPTION' | 'STOCK',
-            optionType: buyOrder.drvOptionType === 'CALL' || buyOrder.drvOptionType === 'PUT' 
-              ? buyOrder.drvOptionType 
-              : null,
-            strikePrice: buyOrder.drvStrikePrice || 0,
-            expiryDate: buyOrder.drvExpiryDate || '',
-            entryTime: buyOrder.createTime,
-            exitTime: matchingSell.createTime,
-            entryPrice,
-            exitPrice,
-            quantity,
-            profitLoss,
-            profitLossPercentage,
-            duration,
-            buyOrderId: buyOrder.orderId,
-            sellOrderId: matchingSell.orderId,
-          });
-        } else {
-          console.log('⚠️ Unmatched BUY order:', buyOrder.orderId, buyOrder.tradingSymbol, 'at ₹' + (buyOrder.averageTradedPrice || buyOrder.price).toFixed(2));
+      // Log unmatched quantities
+      group.buys.forEach(buyOrder => {
+        const remaining = buyQuantities.get(buyOrder.orderId) || 0;
+        if (remaining > 0) {
+          console.log(`⚠️ Unmatched BUY quantity: ${remaining} of ${buyOrder.tradingSymbol} (Order: ${buyOrder.orderId})`);
         }
       });
 
-      // Log unmatched SELLs
       group.sells.forEach(sellOrder => {
-        if (!matchedSells.has(sellOrder.orderId)) {
-          console.log('⚠️ Unmatched SELL order:', sellOrder.orderId, sellOrder.tradingSymbol, 'at ₹' + (sellOrder.averageTradedPrice || sellOrder.price).toFixed(2));
+        const remaining = sellQuantities.get(sellOrder.orderId) || 0;
+        if (remaining > 0) {
+          console.log(`⚠️ Unmatched SELL quantity: ${remaining} of ${sellOrder.tradingSymbol} (Order: ${sellOrder.orderId})`);
         }
       });
     });
@@ -218,16 +363,26 @@ export default function MyTrades() {
       if (dateFilter !== 'all') {
         const exitDate = new Date(entry.exitTime);
         const now = new Date();
-        const daysDiff = Math.floor((now.getTime() - exitDate.getTime()) / (1000 * 60 * 60 * 24));
-
-        if (dateFilter === 'today' && daysDiff > 0) return false;
-        if (dateFilter === 'week' && daysDiff > 7) return false;
-        if (dateFilter === 'month' && daysDiff > 30) return false;
+        
+        if (dateFilter === 'custom' && customDate) {
+          // Match specific date
+          const selectedDate = new Date(customDate);
+          const exitDateOnly = new Date(exitDate.getFullYear(), exitDate.getMonth(), exitDate.getDate());
+          const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+          
+          if (exitDateOnly.getTime() !== selectedDateOnly.getTime()) return false;
+        } else {
+          const daysDiff = Math.floor((now.getTime() - exitDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (dateFilter === 'today' && daysDiff > 0) return false;
+          if (dateFilter === 'week' && daysDiff > 7) return false;
+          if (dateFilter === 'month' && daysDiff > 30) return false;
+        }
       }
 
       return true;
     });
-  }, [journalEntries, selectedSymbol, selectedCategory, dateFilter]);
+  }, [journalEntries, selectedSymbol, selectedCategory, dateFilter, customDate]);
 
   // Filter all orders (for All Orders view)
   const filteredOrders = useMemo(() => {
@@ -250,16 +405,26 @@ export default function MyTrades() {
       if (dateFilter !== 'all') {
         const orderDate = new Date(order.createTime);
         const now = new Date();
-        const daysDiff = Math.floor((now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
-
-        if (dateFilter === 'today' && daysDiff > 0) return false;
-        if (dateFilter === 'week' && daysDiff > 7) return false;
-        if (dateFilter === 'month' && daysDiff > 30) return false;
+        
+        if (dateFilter === 'custom' && customDate) {
+          // Match specific date
+          const selectedDate = new Date(customDate);
+          const orderDateOnly = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate());
+          const selectedDateOnly = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+          
+          if (orderDateOnly.getTime() !== selectedDateOnly.getTime()) return false;
+        } else {
+          const daysDiff = Math.floor((now.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (dateFilter === 'today' && daysDiff > 0) return false;
+          if (dateFilter === 'week' && daysDiff > 7) return false;
+          if (dateFilter === 'month' && daysDiff > 30) return false;
+        }
       }
 
       return true;
     });
-  }, [orders, selectedSymbol, selectedCategory, dateFilter]);
+  }, [orders, selectedSymbol, selectedCategory, dateFilter, customDate]);
 
   // Calculate analytics
   const analytics = useMemo((): TradeAnalytics => {
@@ -492,15 +657,34 @@ export default function MyTrades() {
               <label className="block text-gray-300 text-sm mb-2">Period</label>
               <select
                 value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value as any)}
+                onChange={(e) => {
+                  setDateFilter(e.target.value as any);
+                  if (e.target.value !== 'custom') {
+                    setCustomDate('');
+                  }
+                }}
                 className="w-full bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
               >
                 <option value="today">Today</option>
                 <option value="week">This Week</option>
                 <option value="month">This Month</option>
+                <option value="custom">Custom Date</option>
                 <option value="all">All Time</option>
               </select>
             </div>
+
+            {/* Custom Date Picker */}
+            {dateFilter === 'custom' && (
+              <div className="flex-1 min-w-50">
+                <label className="block text-gray-300 text-sm mb-2">Select Date</label>
+                <input
+                  type="date"
+                  value={customDate}
+                  onChange={(e) => setCustomDate(e.target.value)}
+                  className="w-full bg-gray-800 text-white border border-gray-700 rounded-lg px-4 py-2 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            )}
 
             {/* Refresh Button */}
             <div className="flex items-end">
@@ -553,6 +737,9 @@ export default function MyTrades() {
                     Duration
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                    Entry Time
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                     Exit Time
                   </th>
                 </tr>
@@ -560,13 +747,13 @@ export default function MyTrades() {
               <tbody className="divide-y divide-gray-700/50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-8 text-center text-gray-400">
+                    <td colSpan={12} className="px-4 py-8 text-center text-gray-400">
                       Loading trades...
                     </td>
                   </tr>
                 ) : filteredEntries.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-8 text-center text-gray-400">
+                    <td colSpan={12} className="px-4 py-8 text-center text-gray-400">
                       No completed trades found
                     </td>
                   </tr>
@@ -612,6 +799,9 @@ export default function MyTrades() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-300">{entry.duration}</td>
+                      <td className="px-4 py-3 text-gray-300 text-sm">
+                        {formatDateTime(entry.entryTime)}
+                      </td>
                       <td className="px-4 py-3 text-gray-300 text-sm">
                         {formatDateTime(entry.exitTime)}
                       </td>

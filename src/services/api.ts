@@ -287,6 +287,14 @@ class ApiService {
     if (USE_MOCK_DATA) return mockApiService.getTradeBook();
     return this.request('/api/trade-book');
   }
+
+  /**
+   * Get trade history for a specific date range
+   */
+  async getTradeHistory(fromDate: string, toDate: string): Promise<{ success: boolean; trades?: any[]; error?: string }> {
+    if (USE_MOCK_DATA) return mockApiService.getTradeBook();
+    return this.request(`/api/trade-book?fromDate=${fromDate}&toDate=${toDate}`);
+  }
 }
 
 export const apiService = new ApiService();

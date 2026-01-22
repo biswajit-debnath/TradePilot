@@ -259,11 +259,8 @@ export default function TradeLiveWS() {
       
       // Auto-start live updates if position exists and not already live updating
       if (position && !isLiveUpdating) {
-        console.log('📊 Position detected after refresh, auto-starting live updates...');
-        setTimeout(async () => {
-          await initializeWebSocket();
-          setIsLiveUpdating(true);
-        }, 500); // Small delay to ensure state is updated
+        console.log('📊 Position detected after refresh, setting auto-start flag...');
+        shouldAutoStartRef.current = true;
       }
     } catch (error) {
       showAlert('Error refreshing data: ' + (error instanceof Error ? error.message : 'Unknown'), 'error');
@@ -311,11 +308,8 @@ export default function TradeLiveWS() {
     
     // Auto-start live updates if position exists and not already live updating
     if (position && !isLiveUpdating) {
-      console.log('📊 Position detected after refresh, auto-starting live updates...');
-      setTimeout(async () => {
-        await initializeWebSocket();
-        setIsLiveUpdating(true);
-      }, 500); // Small delay to ensure state is updated
+      console.log('📊 Position detected after refresh, setting auto-start flag...');
+      shouldAutoStartRef.current = true;
     }
   }, [fetchAllPositions, isLiveUpdating, initializeWebSocket, setIsRefreshing]);
 
@@ -385,8 +379,8 @@ export default function TradeLiveWS() {
       shouldAutoStartRef.current = false; // Reset flag
       
       const startWebSocket = async () => {
-        setIsLiveUpdating(true);
         await initializeWebSocket();
+        setIsLiveUpdating(true);
       };
       
       startWebSocket();
@@ -403,26 +397,33 @@ export default function TradeLiveWS() {
       autoRefreshIntervalRef.current = null;
     }
 
-    // Only auto-refresh if there's NO position AND auto-refresh is enabled
-    if (!lastOrder && autoRefreshEnabled) {
-      console.log('📡 No position detected - Starting auto-refresh (1s interval)');
+    // Auto-refresh with different intervals based on position availability
+    if (autoRefreshEnabled) {
+      const interval = lastOrder 
+        ? Number(process.env.NEXT_PUBLIC_AUTO_REFRESH_ON_POSITION_INTERVAL) || 5000 // 5 seconds when position exists
+        : Number(process.env.NEXT_PUBLIC_AUTO_REFRESH_INTERVAL) || 1000; // 1 second when no position
+      
+      console.log(`📡 Starting auto-refresh (${interval}ms interval) - ${lastOrder ? 'Position detected' : 'No position'}`);
+      
       autoRefreshIntervalRef.current = setInterval(async () => {
         // Silently refresh without showing success alert
         try {
-          await Promise.all([
+          const [position] = await Promise.all([
             fetchAllPositions(),
             fetchPendingOrders()
           ]);
+          
+          // Auto-start live updates if position is found
+          if (position && !isLiveUpdating) {
+            console.log('📊 Position detected during auto-refresh, setting auto-start flag...');
+            shouldAutoStartRef.current = true;
+          }
         } catch (error) {
           console.error('Auto-refresh error:', error);
         }
-      }, Number(process.env.NEXT_PUBLIC_AUTO_REFRESH_INTERVAL) || 1000); // 1 second
+      }, interval);
     } else {
-      if (!autoRefreshEnabled) {
-        console.log('⏸️ Auto-refresh disabled by user');
-      } else {
-        console.log('✅ Position detected - Auto-refresh stopped');
-      }
+      console.log('⏸️ Auto-refresh disabled by user');
     }
 
     // Cleanup on unmount or when lastOrder changes
@@ -432,7 +433,7 @@ export default function TradeLiveWS() {
         autoRefreshIntervalRef.current = null;
       }
     };
-  }, [lastOrder, fetchAllPositions, fetchPendingOrders, autoRefreshEnabled]);
+  }, [lastOrder, fetchAllPositions, fetchPendingOrders, autoRefreshEnabled, isLiveUpdating]);
 
   const toggleAutoRefresh = useCallback(() => {
     setAutoRefreshEnabled(prev => {
