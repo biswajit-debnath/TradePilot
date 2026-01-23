@@ -1,4 +1,8 @@
 import { DHAN_CONFIG } from '@/config';
+import { logExternalCall } from '@/lib/api-logger';
+import { AuthContext } from '@/types/auth';
+import { getUserFromRequest } from '@/lib/auth-middleware';
+import { getRequestFromContext } from '@/lib/request-context';
 import { DhanOrder, DhanProfile, PlaceOrderRequest, LTPResponse } from '@/types';
 
 class DhanApiService {
@@ -10,6 +14,39 @@ class DhanApiService {
     this.baseUrl = DHAN_CONFIG.BASE_URL;
     this.accessToken = DHAN_CONFIG.ACCESS_TOKEN;
     this.clientId = DHAN_CONFIG.CLIENT_ID;
+  }
+
+  /**
+   * Get current user from request context
+   */
+  private getCurrentUser(): AuthContext | undefined {
+    const request = getRequestFromContext();
+    console.log('[DHAN-API] Request from context:', !!request);
+    if (!request) {
+      console.log('[DHAN-API] No request in context, user will be anonymous');
+      return undefined;
+    }
+    const user = getUserFromRequest(request);
+    console.log('[DHAN-API] Extracted user:', user?.username || 'anonymous');
+    return user || undefined;
+  }
+
+  /**
+   * Set user context for the current operation (alternative to AsyncLocalStorage)
+   */
+  private userContext?: AuthContext;
+  
+  setUserContext(user: AuthContext | undefined) {
+    this.userContext = user;
+  }
+  
+  private getUser(): AuthContext | undefined {
+    // Try userContext first, then fall back to request context
+    if (this.userContext) {
+      console.log('[DHAN-API] Using explicit user context:', this.userContext.username);
+      return this.userContext;
+    }
+    return this.getCurrentUser();
   }
 
   private getHeaders() {
@@ -24,28 +61,76 @@ class DhanApiService {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
+    const startedAt = Date.now();
+    const requestBody = this.extractBody(options.body);
+    const currentUser = this.getUser();
 
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        ...this.getHeaders(),
-        ...options.headers,
-      },
-    });
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          ...this.getHeaders(),
+          ...options.headers,
+        },
+      });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('❌ Dhan API Error Response:', JSON.stringify(errorData, null, 2));
-      console.error('❌ Request URL:', url);
-      console.error('❌ Request Method:', options.method || 'GET');
-      throw new Error(
-        errorData.errorMessage || 
-        `HTTP Error: ${response.status} ${response.statusText}`
-      );
+      const responseText = await response.text();
+      const parsedResponse = responseText ? JSON.parse(responseText) : ({ status: 'success' } as T);
+
+      if (!response.ok) {
+        const errorMessage = (parsedResponse as any)?.errorMessage || (parsedResponse as any)?.message || `HTTP Error: ${response.status} ${response.statusText}`;
+
+        await logExternalCall({
+          endpoint: url,
+          method: options.method || 'GET',
+          requestBody,
+          responseStatus: response.status,
+          responseBody: parsedResponse,
+          errorMessage,
+          durationMs: Date.now() - startedAt,
+          user: currentUser,
+        });
+
+        throw new Error(errorMessage);
+      }
+
+      await logExternalCall({
+        endpoint: url,
+        method: options.method || 'GET',
+        requestBody,
+        responseStatus: response.status,
+        responseBody: parsedResponse,
+        durationMs: Date.now() - startedAt,
+        user: currentUser,
+      });
+
+      return parsedResponse;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      await logExternalCall({
+        endpoint: url,
+        method: options.method || 'GET',
+        requestBody,
+        errorMessage,
+        durationMs: Date.now() - startedAt,
+        user: currentUser,
+      });
+
+      throw error;
     }
+  }
 
-    const text = await response.text();
-    return text ? JSON.parse(text) : ({ status: 'success' } as T);
+  private extractBody(body: BodyInit | null | undefined): unknown {
+    if (!body) return undefined;
+    if (typeof body === 'string') {
+      try {
+        return JSON.parse(body);
+      } catch {
+        return body;
+      }
+    }
+    return '[unlogged body]';
   }
 
   /**

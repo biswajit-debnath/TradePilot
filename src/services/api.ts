@@ -8,6 +8,7 @@ import {
   PlaceSLOrderResponse 
 } from '@/types';
 import { mockApiService } from './mock-api';
+import { getAuthHeader } from '@/lib/client-auth';
 
 // Position data to pass to APIs
 export interface PositionData {
@@ -31,6 +32,7 @@ class ApiService {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...getAuthHeader(),
         ...options.headers,
       },
     });

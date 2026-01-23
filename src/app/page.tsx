@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiService } from '@/services/api';
 import { ConnectionStatus } from '@/types';
 import { useTradingData } from '@/hooks/useTradingData';
 import { useOrderActions } from '@/hooks/useOrderActions';
+import { useAuth, getAuthHeader } from '@/lib/client-auth';
 import Alert from '@/components/Alert';
 import Navbar from '@/components/Navbar';
 import DrawerMenu from '@/components/DrawerMenu';
@@ -13,6 +15,9 @@ import PositionCard from '@/components/PositionCard';
 import PendingOrdersCard from '@/components/PendingOrdersCard';
 
 export default function Home() {
+  const router = useRouter();
+  const { getToken, logout } = useAuth();
+  const [isReady, setIsReady] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
@@ -20,6 +25,16 @@ export default function Home() {
   const [ppOffset, setPpOffset] = useState(Number(process.env.NEXT_PUBLIC_PP_OFFSET || 2));
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
+
+  // Check authentication on mount
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      router.push('/auth');
+    } else {
+      setIsReady(true);
+    }
+  }, [router, getToken]);
 
   // Use custom hooks for trading data and order actions
   const {
@@ -234,6 +249,11 @@ export default function Home() {
     });
   }, []);
 
+  // Don't render until auth is checked
+  if (!isReady) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen">
       {alert && <Alert message={alert.message} type={alert.type} />}
@@ -242,6 +262,7 @@ export default function Home() {
         connectionStatus={connectionStatus}
         onClose={() => setIsDrawerOpen(false)}
         onHowItWorksClick={() => setShowHowItWorks(true)}
+        onLogout={logout}
       />
       <HowItWorksModal
         isOpen={showHowItWorks}
