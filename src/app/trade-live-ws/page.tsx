@@ -5,6 +5,7 @@ import { apiService } from '@/services/api';
 import { ConnectionStatus, OrderDetails, PendingSLOrder } from '@/types';
 import { useTradingData } from '@/hooks/useTradingData';
 import { useOrderActions } from '@/hooks/useOrderActions';
+import { usePaywallProtection } from '@/hooks/usePaywallProtection';
 import { DhanWebSocketService, TickerData, FeedMode } from '@/lib/dhan-websocket';
 import Alert from '@/components/Alert';
 import Navbar from '@/components/Navbar';
@@ -14,6 +15,7 @@ import LivePositionCard from '@/components/LivePositionCard';
 import PendingOrdersCard from '@/components/PendingOrdersCard';
 
 export default function TradeLiveWS() {
+  usePaywallProtection();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showHowItWorks, setShowHowItWorks] = useState(false);

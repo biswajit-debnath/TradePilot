@@ -3,12 +3,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { apiService } from '@/services/api';
 import { DhanOrder, TradeJournalEntry, TradeAnalytics, ConnectionStatus } from '@/types';
+import { usePaywallProtection } from '@/hooks/usePaywallProtection';
 import Navbar from '@/components/Navbar';
 import DrawerMenu from '@/components/DrawerMenu';
 import HowItWorksModal from '@/components/HowItWorksModal';
 import Alert from '@/components/Alert';
 
 export default function MyTrades() {
+  usePaywallProtection();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);

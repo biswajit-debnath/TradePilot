@@ -1,6 +1,7 @@
 // API Route: Get All Open Positions (Options and Intraday Stocks)
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { dhanApi } from '@/lib/dhan-api';
+import { getUserFromAuthHeader } from '@/lib/auth-middleware';
 import { DHAN_CONFIG } from '@/config';
 
 /**
@@ -51,8 +52,13 @@ function isOptionPosition(position: any): boolean {
   return false;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Extract user from Authorization header
+    const authHeader = request.headers.get('Authorization');
+    const user = getUserFromAuthHeader(authHeader);
+    dhanApi.setUserContext(user || undefined);
+    
     const positions = await dhanApi.getPositions();
     
     if (!positions || positions.length === 0) {

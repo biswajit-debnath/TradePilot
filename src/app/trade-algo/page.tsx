@@ -5,6 +5,7 @@ import { apiService } from '@/services/api';
 import { ConnectionStatus, OrderDetails, PendingSLOrder } from '@/types';
 import { useTradingData } from '@/hooks/useTradingData';
 import { useAlgorithms } from '@/hooks/useAlgorithms';
+import { usePaywallProtection } from '@/hooks/usePaywallProtection';
 import { DhanWebSocketService, TickerData, FeedMode } from '@/lib/dhan-websocket';
 import Alert from '@/components/Alert';
 import Navbar from '@/components/Navbar';
@@ -16,6 +17,7 @@ import AlgoPanel from '@/components/AlgoPanel';
 import AlgoTerminal from '@/components/AlgoTerminal';
 
 export default function TradeAlgo() {
+  usePaywallProtection();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showHowItWorks, setShowHowItWorks] = useState(false);

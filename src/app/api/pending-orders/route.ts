@@ -1,9 +1,15 @@
 // API Route: Get Pending Orders from TradePilot (SL, TP, Exit orders)
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { dhanApi } from '@/lib/dhan-api';
+import { getUserFromAuthHeader } from '@/lib/auth-middleware';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    // Extract user from Authorization header
+    const authHeader = request.headers.get('Authorization');
+    const user = getUserFromAuthHeader(authHeader);
+    dhanApi.setUserContext(user || undefined);
+    
     const [orders, positions] = await Promise.all([
       dhanApi.getPendingSLOrders(),
       dhanApi.getPositions()

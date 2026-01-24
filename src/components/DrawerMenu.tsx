@@ -7,6 +7,7 @@ interface DrawerMenuProps {
   connectionStatus: ConnectionStatus | null;
   onClose: () => void;
   onHowItWorksClick: () => void;
+  onLogout?: () => void;
 }
 
 export default function DrawerMenu({
@@ -14,6 +15,7 @@ export default function DrawerMenu({
   connectionStatus,
   onClose,
   onHowItWorksClick,
+  onLogout,
 }: DrawerMenuProps) {
   const pathname = usePathname();
 
@@ -187,6 +189,26 @@ export default function DrawerMenu({
                 <div className="text-xs text-gray-400">Learn about order types</div>
               </div>
             </button>
+
+            {onLogout && (
+              <>
+                <div className="border-t border-gray-800 my-3" />
+                <button
+                  onClick={() => {
+                    onLogout();
+                    onClose();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-red-900/20 hover:border-red-500/30 border border-transparent transition-colors text-left text-red-400"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                  <div>
+                    <div className="text-sm font-medium">Logout</div>
+                  </div>
+                </button>
+              </>
+            )}
           </nav>
         </div>
       </div>
