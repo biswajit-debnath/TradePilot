@@ -16,7 +16,7 @@ import PendingOrdersCard from '@/components/PendingOrdersCard';
 
 export default function Home() {
   const router = useRouter();
-  const { getToken, logout } = useAuth();
+  const { getToken, getUsername, logout } = useAuth();
   const [isReady, setIsReady] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -26,15 +26,24 @@ export default function Home() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 
-  // Check authentication on mount
+  // Check authentication and paywall on mount
   useEffect(() => {
     const token = getToken();
+    const username = getUsername();
+    
     if (!token) {
       router.push('/auth');
-    } else {
-      setIsReady(true);
+      return;
     }
-  }, [router, getToken]);
+    
+    // Check if user is on paywall
+    if (username === 'gurjyot') {
+      router.push('/paywall');
+      return;
+    }
+    
+    setIsReady(true);
+  }, [router, getToken, getUsername]);
 
   // Use custom hooks for trading data and order actions
   const {

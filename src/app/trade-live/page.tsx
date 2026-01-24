@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { apiService } from '@/services/api';
 import { ConnectionStatus, OrderDetails, PendingSLOrder } from '@/types';
 import { useTradingData } from '@/hooks/useTradingData';
+import { usePaywallProtection } from '@/hooks/usePaywallProtection';
 import Alert from '@/components/Alert';
 import Navbar from '@/components/Navbar';
 import DrawerMenu from '@/components/DrawerMenu';
@@ -12,6 +13,7 @@ import LivePositionCard from '@/components/LivePositionCard';
 import PendingOrdersCard from '@/components/PendingOrdersCard';
 
 export default function TradeLive() {
+  usePaywallProtection();
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
   const [alert, setAlert] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showHowItWorks, setShowHowItWorks] = useState(false);

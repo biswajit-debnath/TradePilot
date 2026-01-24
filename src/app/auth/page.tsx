@@ -180,25 +180,6 @@ export default function AuthPage() {
               )}
             </button>
           </form>
-
-          {/* Toggle Section */}
-          <div className="mt-6 pt-6 border-t border-gray-700/50 text-center">
-            <p className="text-gray-400 text-sm mb-3">
-              {isLogin ? "Don't have an account?" : 'Already have an account?'}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setError(null);
-                setPassword('');
-                setConfirmPassword('');
-              }}
-              className="text-cyan-400 hover:text-cyan-300 font-medium text-sm transition-colors"
-            >
-              {isLogin ? 'Sign up here' : 'Login here'}
-            </button>
-          </div>
         </div>
 
         {/* Footer */}
