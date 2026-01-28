@@ -18,6 +18,7 @@ export default function Home() {
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [tpOffset, setTpOffset] = useState(Number(process.env.NEXT_PUBLIC_TP_OFFSET || 12));
   const [ppOffset, setPpOffset] = useState(Number(process.env.NEXT_PUBLIC_PP_OFFSET || 2));
+  const [lotSize, setLotSize] = useState(Number(process.env.NEXT_PUBLIC_DEFAULT_LOT_SIZE || 1));
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
 
@@ -62,6 +63,7 @@ export default function Home() {
     showAlert,
     lastOrder,
     ppOffset,
+    lotSize,
   });
 
   const checkConnection = useCallback(async () => {
@@ -81,9 +83,10 @@ export default function Home() {
   const refreshAll = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      // Reset offsets to default values
+      // Reset offsets and lot size to default values
       setTpOffset(Number(process.env.NEXT_PUBLIC_TP_OFFSET || 12));
       setPpOffset(Number(process.env.NEXT_PUBLIC_PP_OFFSET || 2));
+      setLotSize(Number(process.env.NEXT_PUBLIC_DEFAULT_LOT_SIZE || 1));
       
       await Promise.all([
         checkConnection(),
@@ -120,6 +123,14 @@ export default function Home() {
 
   const decrementPpOffset = () => {
     setPpOffset(prev => Math.max(1, prev - 1));
+  };
+
+  const incrementLotSize = () => {
+    setLotSize(prev => prev + 1);
+  };
+
+  const decrementLotSize = () => {
+    setLotSize(prev => Math.max(1, prev - 1));
   };
 
   const exitAll = async () => {
@@ -265,6 +276,7 @@ export default function Home() {
           isLoading={isLoading}
           tpOffset={tpOffset}
           ppOffset={ppOffset}
+          lotSize={lotSize}
           hasExistingLimitOrder={hasExistingLimitOrder}
           onRefreshPosition={handleRefreshPosition}
           onPlaceProtectiveSL={placeProtectiveLimitOrder}
@@ -276,6 +288,8 @@ export default function Home() {
           onDecrementTpOffset5={decrementTpOffset5}
           onIncrementPpOffset={incrementPpOffset}
           onDecrementPpOffset={decrementPpOffset}
+          onIncrementLotSize={incrementLotSize}
+          onDecrementLotSize={decrementLotSize}
           onSelectPosition={selectPosition}
         />
         <PendingOrdersCard

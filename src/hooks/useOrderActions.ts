@@ -12,6 +12,7 @@ interface UseOrderActionsParams {
   showAlert: (message: string, type: 'success' | 'error' | 'info') => void;
   lastOrder: any;
   ppOffset: number;
+  lotSize: number; // Number of lots for F&O trading
 }
 
 export function useOrderActions({
@@ -24,6 +25,7 @@ export function useOrderActions({
   showAlert,
   lastOrder,
   ppOffset,
+  lotSize,
 }: UseOrderActionsParams) {
   // Handle order placement/update logic
   const handleOrderAction = useCallback(async (offset: number, isTP: boolean, actionName: string) => {
@@ -68,10 +70,11 @@ export function useOrderActions({
       }
       
       // Now place the new order
-      console.log(`📝 Creating new ${actionName} order`);
+      console.log(`📝 Creating new ${actionName} order with lot size: ${lotSize}`);
       const response = await apiService.placeLimitOrder({
         offset,
         is_tp: isTP,
+        lot_size: lotSize,
         position_data: positionData,
       });
       
@@ -110,7 +113,7 @@ export function useOrderActions({
     } finally {
       setIsLoading(false);
     }
-  }, [lastOrder, getPositionData, findAllExistingOrders, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert]);
+  }, [lastOrder, getPositionData, findAllExistingOrders, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert, lotSize]);
 
   const placeProtectiveLimitOrder = useCallback(async () => {
     console.log('🟢 PP BUTTON CLICKED - placeProtectiveLimitOrder called with ppOffset:', ppOffset);
@@ -166,11 +169,12 @@ export function useOrderActions({
       }
 
       // Place STOP_LOSS_LIMIT order
-      console.log(`🔻 Placing Protective SL-Limit Order: { buyPrice: ${positionData.buy_price}, ppOffset: +${ppOffset}, triggerPrice: ${triggerPrice}, limitPrice: ${limitPrice} }`);
+      console.log(`🔻 Placing Protective SL-Limit Order: { buyPrice: ${positionData.buy_price}, ppOffset: +${ppOffset}, triggerPrice: ${triggerPrice}, limitPrice: ${limitPrice}, lotSize: ${lotSize} }`);
       
       const requestData = {
         trigger_price: triggerPrice,
         limit_price: limitPrice,
+        lot_size: lotSize,
         position_data: positionData,
       };
       console.log('📤 Sending to API:', JSON.stringify(requestData, null, 2));
@@ -190,7 +194,7 @@ export function useOrderActions({
     } finally {
       setIsLoading(false);
     }
-  }, [lastOrder, getPositionData, findAllExistingOrders, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert, ppOffset]);
+  }, [lastOrder, getPositionData, findAllExistingOrders, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert, ppOffset, lotSize]);
 
   const placeMainStopLossOrder = useCallback(async () => {
     console.log('🔴 MAIN SL BUTTON CLICKED - placeMainStopLossOrder called');
@@ -236,10 +240,11 @@ export function useOrderActions({
       }
 
       // Place STOP_LOSS_LIMIT order (works better for F&O)
-      console.log(`🛡️ Placing SL-Limit Order: { buyPrice: ${positionData.buy_price}, offset: ${offset}, triggerPrice: ${triggerPrice}, limitPrice: ${limitPrice} }`);
+      console.log(`🛡️ Placing SL-Limit Order: { buyPrice: ${positionData.buy_price}, offset: ${offset}, triggerPrice: ${triggerPrice}, limitPrice: ${limitPrice}, lotSize: ${lotSize} }`);
       const response = await apiService.placeStopLossLimitOrder({
         trigger_price: triggerPrice,
         limit_price: limitPrice,
+        lot_size: lotSize,
         position_data: positionData,
       });
 
@@ -256,7 +261,7 @@ export function useOrderActions({
     } finally {
       setIsLoading(false);
     }
-  }, [lastOrder, getPositionData, findAllExistingOrders, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert]);
+  }, [lastOrder, getPositionData, findAllExistingOrders, setPendingOrders, fetchPendingOrders, setIsLoading, showAlert, lotSize]);
 
   const placeTakeProfitOrder = useCallback((tpOffset: number) => {
     handleOrderAction(tpOffset, true, 'Take Profit');

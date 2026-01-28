@@ -1,6 +1,7 @@
 // API Route: Place SL-Limit Order (uses data from frontend)
 import { NextRequest, NextResponse } from 'next/server';
 import { dhanApi } from '@/lib/dhan-api';
+import { calculateQuantityFromLotSize } from '@/lib/lot-size-helper';
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,6 +11,7 @@ export async function POST(request: NextRequest) {
     
     const triggerPrice = body?.trigger_price;
     const limitPrice = body?.limit_price;
+    const lotSize = body?.lot_size || 1;
     const positionData = body?.position_data;
 
     // Validate required data
@@ -35,11 +37,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Calculate actual quantity from lot size
+    // For F&O: quantity = lotSize × lot_multiplier (e.g., 2 lots NIFTY = 130 qty)
+    // For stocks: quantity = lotSize × 1 (e.g., 2 lots = 2 qty)
+    const actualQuantity = calculateQuantityFromLotSize(positionData.symbol, lotSize);
+
     console.log('✅ Using frontend data:', {
       symbol: positionData.symbol,
       buyPrice: positionData.buy_price,
       triggerPrice: triggerPrice,
       limitPrice: limitPrice,
+      lotSize: lotSize,
+      actualQuantity: actualQuantity,
       orderType: triggerPrice > positionData.buy_price ? 'PP (Protect Profit)' : 'SL (Stop Loss)'
     });
     
@@ -52,7 +61,7 @@ export async function POST(request: NextRequest) {
       exchangeSegment: positionData.exchange_segment,
       productType: positionData.product_type,
       securityId: positionData.security_id,
-      quantity: positionData.quantity,
+      quantity: actualQuantity,
       triggerPrice: triggerPrice,
       price: limitPrice,
       correlationId: `${correlationIdPrefix}${positionData.security_id}`,
@@ -68,7 +77,8 @@ export async function POST(request: NextRequest) {
       trigger_price: triggerPrice,
       limit_price: limitPrice,
       symbol: positionData.symbol,
-      quantity: positionData.quantity,
+      quantity: actualQuantity,
+      lot_size: lotSize,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

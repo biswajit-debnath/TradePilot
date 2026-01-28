@@ -7,6 +7,7 @@ interface PositionCardProps {
   isLoading: boolean;
   tpOffset: number;
   ppOffset: number;
+  lotSize: number;
   hasExistingLimitOrder: boolean;
   onRefreshPosition: () => void;
   onPlaceProtectiveSL: () => void;
@@ -18,6 +19,8 @@ interface PositionCardProps {
   onDecrementTpOffset5?: () => void;
   onIncrementPpOffset: () => void;
   onDecrementPpOffset: () => void;
+  onIncrementLotSize: () => void;
+  onDecrementLotSize: () => void;
   onSelectPosition: (securityId: string) => void;
 }
 
@@ -28,6 +31,7 @@ export default function PositionCard({
   isLoading,
   tpOffset,
   ppOffset,
+  lotSize,
   hasExistingLimitOrder,
   onRefreshPosition,
   onPlaceProtectiveSL,
@@ -39,6 +43,8 @@ export default function PositionCard({
   onDecrementTpOffset5,
   onIncrementPpOffset,
   onDecrementPpOffset,
+  onIncrementLotSize,
+  onDecrementLotSize,
   onSelectPosition,
 }: PositionCardProps) {
   const slOffset = process.env.NEXT_PUBLIC_PP_OFFSET || '2';
@@ -116,6 +122,32 @@ export default function PositionCard({
               <p className="text-gray-500 text-xs mb-0.5">Quantity</p>
               <p className="text-sm md:text-base font-semibold">{lastOrder.quantity || '-'}</p>
             </div>
+            
+            {/* Lot Size Control - Only show for F&O positions */}
+            {lastOrder.order_category === 'OPTION' && (
+              <div className="bg-black/30 p-2 md:p-3 rounded-lg col-span-2 md:col-span-1">
+                <p className="text-gray-500 text-xs mb-1">Lot Size</p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={onDecrementLotSize}
+                    disabled={isLoading || lotSize <= 1}
+                    className="px-2 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded text-sm font-bold transition disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    −
+                  </button>
+                  <span className="flex-1 text-center text-sm md:text-base font-bold text-cyan-400">
+                    {lotSize} {lotSize === 1 ? 'Lot' : 'Lots'}
+                  </span>
+                  <button
+                    onClick={onIncrementLotSize}
+                    disabled={isLoading}
+                    className="px-2 py-1 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded text-sm font-bold transition disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="bg-black/30 p-2 md:p-3 rounded-lg">
               <p className="text-gray-500 text-xs mb-0.5">Buy Price</p>
               <p className="text-sm md:text-base font-semibold text-green-400">₹{lastOrder.buy_price?.toFixed(2)}</p>

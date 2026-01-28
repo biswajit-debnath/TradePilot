@@ -110,6 +110,7 @@ class ApiService {
   async placeLimitOrder(options: { 
     offset: number; 
     is_tp: boolean;
+    lot_size?: number; // Number of lots (defaults to 1)
     position_data: PositionData;
   }): Promise<PlaceSLOrderResponse> {
     if (USE_MOCK_DATA) return mockApiService.placeLimitOrder(options);
@@ -119,6 +120,7 @@ class ApiService {
       body: JSON.stringify({
         offset: options.offset,
         is_tp: options.is_tp,
+        lot_size: options.lot_size || 1,
         position_data: options.position_data
       }),
     });
@@ -178,6 +180,7 @@ class ApiService {
    */
   async placeStopLossMarketOrder(options: {
     trigger_price: number;
+    lot_size?: number; // Number of lots (defaults to 1)
     position_data: PositionData;
   }): Promise<PlaceSLOrderResponse> {
     if (USE_MOCK_DATA) return mockApiService.placeStopLossMarketOrder(options);
@@ -186,6 +189,7 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({
         trigger_price: options.trigger_price,
+        lot_size: options.lot_size || 1,
       }),
     });
   }
@@ -196,6 +200,7 @@ class ApiService {
   async placeStopLossLimitOrder(options: {
     trigger_price: number;
     limit_price: number;
+    lot_size?: number; // Number of lots (defaults to 1)
     position_data: PositionData;
   }): Promise<PlaceSLOrderResponse> {
     if (USE_MOCK_DATA) return mockApiService.placeStopLossLimitOrder(options);
@@ -205,6 +210,7 @@ class ApiService {
       body: JSON.stringify({
         trigger_price: options.trigger_price,
         limit_price: options.limit_price,
+        lot_size: options.lot_size || 1,
         position_data: options.position_data,
       }),
     });

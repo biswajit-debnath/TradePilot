@@ -30,6 +30,8 @@ export function useTradingData() {
     try {
       const response = await apiService.getAllPositions();
       if (response.success && response.positions) {
+        console.log('📦 Raw positions from API:', response.positions.length);
+        
         // Map positions to OrderDetails format
         const mappedPositions: OrderDetails[] = response.positions.map(pos => ({
           order_id: pos.position_id,
@@ -49,14 +51,55 @@ export function useTradingData() {
           realized_profit: pos.realized_profit,
         }));
         
-        setAllPositions(mappedPositions);
+        // Debug: Log all positions before aggregation
+        mappedPositions.forEach((pos, idx) => {
+          console.log(`Position ${idx + 1}: ${pos.symbol} | Qty: ${pos.quantity} | SecID: ${pos.security_id} | Buy: ${pos.buy_price}`);
+        });
+        
+        // Aggregate positions with the same security_id (same symbol/strike/expiry)
+        const aggregatedMap = new Map<string, OrderDetails>();
+        
+        mappedPositions.forEach(pos => {
+          const existing = aggregatedMap.get(pos.security_id);
+          
+          if (existing) {
+            console.log(`🔄 Aggregating: ${pos.symbol} - Adding ${pos.quantity} to existing ${existing.quantity}`);
+            
+            // Combine positions: sum quantities and calculate weighted average buy price
+            const totalQuantity = existing.quantity + pos.quantity;
+            const weightedBuyPrice = 
+              (existing.buy_price * existing.quantity + pos.buy_price * pos.quantity) / totalQuantity;
+            
+            console.log(`   New total qty: ${totalQuantity}, Weighted avg price: ${weightedBuyPrice.toFixed(2)}`);
+            
+            aggregatedMap.set(pos.security_id, {
+              ...existing,
+              quantity: totalQuantity,
+              buy_price: weightedBuyPrice,
+              unrealized_profit: existing.unrealized_profit + pos.unrealized_profit,
+              realized_profit: existing.realized_profit + pos.realized_profit,
+            });
+          } else {
+            // First occurrence of this security_id
+            console.log(`📍 First occurrence: ${pos.symbol} | Qty: ${pos.quantity} | SecID: ${pos.security_id}`);
+            aggregatedMap.set(pos.security_id, pos);
+          }
+        });
+        
+        // Convert map back to array
+        const aggregatedPositions = Array.from(aggregatedMap.values());
+        
+        console.log(`✅ After aggregation: ${response.positions.length} positions -> ${aggregatedPositions.length} aggregated positions`);
+        
+        setAllPositions(aggregatedPositions);
         
         // Auto-select first F&O position, or first position if no F&O
-        if (mappedPositions.length > 0) {
-          const fnoPosition = mappedPositions.find(p => 
+        if (aggregatedPositions.length > 0) {
+          const fnoPosition = aggregatedPositions.find(p => 
             ['NSE_FNO', 'BSE_FNO', 'MCX_COMM'].includes(p.exchange_segment)
           );
-          const selectedPosition = fnoPosition || mappedPositions[0];
+          const selectedPosition = fnoPosition || aggregatedPositions[0];
+          console.log(`🎯 Selected position: ${selectedPosition.symbol} | Total Qty: ${selectedPosition.quantity} | Avg Buy: ${selectedPosition.buy_price.toFixed(2)}`);
           setLastOrder(selectedPosition);
           return selectedPosition;
         } else {

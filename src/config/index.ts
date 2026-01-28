@@ -15,6 +15,9 @@ export const DHAN_CONFIG = {
 
   // Stop Loss offset (points above buy price)
   TP_OFFSET: Number(process.env.NEXT_PUBLIC_PP_OFFSET) || 2.0,
+  
+  // Default lot size for F&O positions
+  DEFAULT_LOT_SIZE: Number(process.env.NEXT_PUBLIC_DEFAULT_LOT_SIZE) || 1,
 };
 
 // Exchange Segments

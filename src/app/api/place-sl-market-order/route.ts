@@ -2,17 +2,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { dhanApi } from '@/lib/dhan-api';
 import { DHAN_CONFIG } from '@/config';
+import { calculateQuantityFromLotSize } from '@/lib/lot-size-helper';
 
 export async function POST(request: NextRequest) {
   try {
     // Get optional parameters from request body
     let customTriggerPrice: number | undefined;
     let pointsOffset: number | undefined;
+    let lotSize: number = 1;
     
     try {
       const body = await request.json();
       customTriggerPrice = body?.trigger_price;
       pointsOffset = body?.points_offset;
+      lotSize = body?.lot_size || 1;
     } catch {
       // No body or invalid JSON, use default calculation
     }
@@ -68,12 +71,16 @@ export async function POST(request: NextRequest) {
       triggerPrice = buyPrice + DHAN_CONFIG.TP_OFFSET;
     }
 
+    // Calculate actual quantity from lot size
+    const actualQuantity = calculateQuantityFromLotSize(position.tradingSymbol, lotSize);
+
     console.log('🎯 Order details:', {
       symbol: position.tradingSymbol,
       exchangeSegment: position.exchangeSegment,
       productType: position.productType,
       securityId: position.securityId,
-      quantity: position.netQty,
+      lotSize: lotSize,
+      quantity: actualQuantity,
       buyPrice: buyPrice,
       triggerPrice: triggerPrice,
       correlationId: `${correlationIdPrefix}${position.securityId}`
@@ -85,7 +92,7 @@ export async function POST(request: NextRequest) {
       exchangeSegment: position.exchangeSegment,
       productType: position.productType,
       securityId: position.securityId,
-      quantity: position.netQty,
+      quantity: actualQuantity,
       triggerPrice: Number(triggerPrice.toFixed(1)),
       correlationId: `${correlationIdPrefix}${position.securityId}`,
     });
@@ -97,7 +104,8 @@ export async function POST(request: NextRequest) {
       buy_price: buyPrice,
       trigger_price: triggerPrice,
       symbol: position.tradingSymbol,
-      quantity: position.netQty,
+      quantity: actualQuantity,
+      lot_size: lotSize,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

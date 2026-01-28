@@ -43,6 +43,7 @@ export interface PositionDetails {
   strike_price: number;
   expiry_date: string;
   quantity: number;
+  lot_size?: number; // Lot size for F&O (quantity = lot_size * lot_multiplier)
   buy_price: number;
   sl_trigger_price: number;
   sl_offset: number;
@@ -62,6 +63,7 @@ export interface OrderDetails {
   strike_price: number;
   expiry_date: string;
   quantity: number;
+  lot_size?: number; // Lot size for F&O (quantity = lot_size * lot_multiplier)
   buy_price: number;
   sl_trigger_price: number;
   sl_offset: number;

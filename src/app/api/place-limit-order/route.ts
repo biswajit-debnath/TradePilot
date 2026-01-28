@@ -1,6 +1,7 @@
 // API Route: Place LIMIT Order (for SL and TP with better execution)
 import { NextRequest, NextResponse } from 'next/server';
 import { dhanApi } from '@/lib/dhan-api';
+import { calculateQuantityFromLotSize } from '@/lib/lot-size-helper';
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,6 +9,7 @@ export async function POST(request: NextRequest) {
     const { 
       offset, 
       is_tp = false,
+      lot_size = 1, // Number of lots to trade (for F&O)
       // Position data passed from frontend (optional - for optimization)
       position_data
     } = body;
@@ -53,8 +55,15 @@ export async function POST(request: NextRequest) {
       buyPrice = lastOrder?.price || fetchedPosition.buyAvg;
     }
 
+    // Calculate actual quantity from lot size
+    // For F&O: quantity = lot_size × lot_multiplier (e.g., 2 lots of NIFTY = 130 qty)
+    // For stocks: quantity = lot_size × 1 (e.g., 2 lots = 2 qty)
+    // The helper function returns lot_multiplier=1 for non-F&O symbols
+    const actualQuantity = calculateQuantityFromLotSize(position.tradingSymbol, lot_size);
+
     console.log(`📊 Position: ${position.tradingSymbol}`);
     console.log(`   Buy Price: ${buyPrice}`);
+    console.log(`   Lot Size: ${lot_size} → Quantity: ${actualQuantity}`);
     
     let limitPrice: number;
     let correlationIdPrefix: string;
@@ -94,7 +103,7 @@ export async function POST(request: NextRequest) {
       exchangeSegment: position.exchangeSegment,
       productType: position.productType,
       securityId: position.securityId,
-      quantity: position.netQty,
+      quantity: actualQuantity,
       price: limitPrice,
       correlationId: `${correlationIdPrefix}${position.securityId}`,
     });
@@ -106,7 +115,8 @@ export async function POST(request: NextRequest) {
       buy_price: buyPrice,
       limit_price: limitPrice,
       symbol: position.tradingSymbol,
-      quantity: position.netQty,
+      quantity: actualQuantity,
+      lot_size: lot_size,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
